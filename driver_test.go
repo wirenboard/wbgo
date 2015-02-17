@@ -2,6 +2,7 @@ package wbgo
 
 import (
 	"testing"
+	"github.com/stretchr/testify/assert"
 )
 
 func doTestDriver(t *testing.T,
@@ -61,5 +62,61 @@ func TestDriver(t *testing.T) {
 			"stop: driver",
 		)
 		model.Verify()
+	})
+}
+
+func TestExternalDevices(t *testing.T) {
+	doTestDriver(t, func (driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel) {
+		driver.SetAcceptsExternalDevices(true)
+		driver.Start()
+		client.Publish(MQTTMessage{"/devices/somedev/meta/name", "SomeDev", 1, true})
+		broker.Verify(
+			"Subscribe -- driver: /devices/+/meta/name",
+			"Subscribe -- driver: /devices/+/controls/+",
+			"Subscribe -- driver: /devices/+/controls/+/meta/type",
+			"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		)
+		dev := model.GetDevice("somedev")
+		assert.NotEqual(t, nil, dev)
+
+		client.Publish(MQTTMessage{"/devices/somedev/controls/paramOne", "42", 1, true})
+		broker.Verify(
+			"tst -> /devices/somedev/controls/paramOne: [42] (QoS 1, retained)",
+		)
+		model.Verify(
+			"send: somedev.paramOne = 42",
+		)
+		assert.Equal(t, "42", dev.GetValue("paramOne"))
+		assert.Equal(t, "text", dev.GetType("paramOne"))
+
+		client.Publish(MQTTMessage{"/devices/somedev/controls/paramOne/meta/type", "temperature", 1, true})
+		broker.Verify(
+			"tst -> /devices/somedev/controls/paramOne/meta/type: [temperature] (QoS 1, retained)",
+		)
+		model.Verify(
+			"the type of somedev.paramOne is: temperature",
+		)
+		assert.Equal(t, "42", dev.GetValue("paramOne"))
+		assert.Equal(t, "temperature", dev.GetType("paramOne"))
+
+		client.Publish(MQTTMessage{"/devices/somedev/controls/paramTwo/meta/type", "pressure", 1, true})
+		broker.Verify(
+			"tst -> /devices/somedev/controls/paramTwo/meta/type: [pressure] (QoS 1, retained)",
+		)
+		model.Verify(
+			"the type of somedev.paramTwo is: pressure",
+		)
+		assert.Equal(t, "", dev.GetValue("paramTwo"))
+		assert.Equal(t, "pressure", dev.GetType("paramTwo"))
+
+		client.Publish(MQTTMessage{"/devices/somedev/controls/paramTwo", "755", 1, true})
+		broker.Verify(
+			"tst -> /devices/somedev/controls/paramTwo: [755] (QoS 1, retained)",
+		)
+		model.Verify(
+			"send: somedev.paramTwo = 755",
+		)
+		assert.Equal(t, "755", dev.GetValue("paramTwo"))
+		assert.Equal(t, "pressure", dev.GetType("paramTwo"))
 	})
 }

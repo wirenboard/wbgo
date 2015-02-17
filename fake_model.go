@@ -67,6 +67,10 @@ func (model *FakeModel) MakeDevice(name string, title string,
 	return
 }
 
+func (model *FakeModel) AddDevice(name string) (ExternalDeviceModel, error) {
+	return model.MakeDevice(name, name, nil), nil
+}
+
 func (model *FakeModel) GetDevice(name string) *FakeDevice {
 	if dev, found := model.devices[name]; !found {
 		model.T().Fatalf("unknown device %s", name)
@@ -76,17 +80,20 @@ func (model *FakeModel) GetDevice(name string) *FakeDevice {
 	}
 }
 
+// TBD: rename SendValue / ReceiveValue
+
 func (dev *FakeDevice) SendValue(name, value string) bool {
 	if _, found := dev.paramTypes[name]; !found {
-		// cannot use dev.model.T().Fatalf() here because
-		// SendValue is invoked from goroutine other
-		// than the one running the test
-		log.Panicf("trying to send unknown param %s (value %s)",
-			name, value)
+		dev.paramTypes[name] = "text"
 	}
 	dev.paramValues[name] = value
 	dev.model.Rec("send: %s.%s = %s", dev.DevName, name, value)
 	return true
+}
+
+func (dev *FakeDevice) SendControlType(name, controlType string) {
+	dev.paramTypes[name] = controlType
+	dev.model.Rec("the type of %s.%s is: %s", dev.DevName, name, controlType)
 }
 
 func (dev *FakeDevice) QueryParams() {
@@ -103,4 +110,13 @@ func (dev *FakeDevice) ReceiveValue(name, value string) {
 		dev.paramValues[name] = value
 		dev.Observer.OnValue(dev, name, value)
 	}
+}
+
+func (dev *FakeDevice) GetValue(name string) string {
+	return dev.paramValues[name]
+}
+
+
+func (dev *FakeDevice) GetType(name string) string {
+	return dev.paramTypes[name]
 }

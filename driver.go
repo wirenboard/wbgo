@@ -2,6 +2,7 @@ package wbgo
 
 import (
 	"log"
+	"fmt"
 	"time"
 	"strings"
 	"strconv"
@@ -34,6 +35,12 @@ type Model interface {
 	Poll()
 }
 
+// ExtendedModel is a Model that supports external devices
+type ExtendedModel interface {
+	Model
+	AddDevice(name string) (ExternalDeviceModel, error)
+}
+
 type DeviceModel interface {
 	Name() string
 	Title() string
@@ -41,6 +48,12 @@ type DeviceModel interface {
 	// and returns true if the value should be automatically echoed back
 	SendValue(name, value string) bool
 	Observe(observer DeviceObserver)
+}
+
+type ExternalDeviceModel interface {
+	DeviceModel
+	SetTitle(title string)
+	SendControlType(name, controlType string)
 }
 
 // TBD: Use ModelObserver interface
@@ -78,6 +91,10 @@ func (dev *DeviceBase) Title() string {
 	return dev.DevTitle
 }
 
+func (dev *DeviceBase) SetTitle(title string) {
+	dev.DevTitle = title
+}
+
 func (dev *DeviceBase) Observe(observer DeviceObserver) {
 	dev.Observer = observer
 }
@@ -86,7 +103,7 @@ func (dev *DeviceBase) Observe(observer DeviceObserver) {
 type Driver struct {
 	model Model
 	client MQTTClient
-	incomingMQTTValueCh chan MQTTMessage
+	mqttEventCh chan func()
 	quit chan struct{}
 	poll chan time.Time
 	deviceMap map[string]DeviceModel
@@ -101,7 +118,7 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 	drv = &Driver{
 		model: model,
 		client: client,
-		incomingMQTTValueCh: make(chan MQTTMessage),
+		mqttEventCh: make(chan func()),
 		quit: make(chan struct{}),
 		poll: make(chan time.Time),
 		nextOrder: make(map[string]int),
@@ -156,9 +173,24 @@ func (drv *Driver) publishValue(dev DeviceModel, controlName, value string) {
 }
 
 func (drv *Driver) OnNewDevice(dev DeviceModel) {
+	// this overrides a possibly created external device with same name
 	drv.deviceMap[dev.Name()] = dev
 	drv.publishMeta(drv.topic(dev, "meta", "name"), dev.Title())
 	dev.Observe(drv)
+}
+
+// wrapMessageHandler wraps the message function so that it's run in
+// the driver's primary goroutine
+func (drv *Driver) wrapMessageHandler(handler MQTTMessageHandler) MQTTMessageHandler {
+	return func (msg MQTTMessage) {
+		drv.mqttEventCh <- func () {
+			handler(msg)
+		}
+	}
+}
+
+func (drv *Driver) subscribe(handler MQTTMessageHandler, topics... string) {
+	drv.client.Subscribe(drv.wrapMessageHandler(handler), topics...)
 }
 
 func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value string, readOnly bool) {
@@ -172,12 +204,10 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 		strconv.Itoa(nextOrder))
 	drv.nextOrder[devName] = nextOrder + 1
 	drv.publishValue(dev, controlName, value)
-	if !readOnly && !drv.acceptsExternalDevices {
+	if !readOnly {
 		log.Printf("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
-		drv.client.Subscribe(
-			func (msg MQTTMessage) {
-				drv.incomingMQTTValueCh <- msg
-			},
+		drv.subscribe(
+			drv.handleIncomingMQTTValue,
 			drv.controlTopic(dev, controlName, "on"))
 	}
 }
@@ -186,7 +216,31 @@ func (drv *Driver) OnValue(dev DeviceModel, controlName, value string) {
 	drv.publishValue(dev, controlName, value)
 }
 
-func (drv *Driver) doHandleIncomingMQTTValue(msg MQTTMessage) {
+func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, error) {
+	dev, found := drv.deviceMap[deviceName]
+	if found {
+		extDev, ok := dev.(ExternalDeviceModel)
+		if ok {
+			return extDev, nil
+		} else {
+			return nil, nil
+		}
+	}
+
+	if !drv.acceptsExternalDevices {
+		return nil, fmt.Errorf("unknown device: %s", deviceName)
+	}
+
+	extModel := drv.model.(ExtendedModel)
+	if dev, err := extModel.AddDevice(deviceName); err != nil {
+		return nil, err
+	} else {
+		drv.deviceMap[deviceName] = dev
+		return dev, nil
+	}
+}
+
+func (drv *Driver) handleIncomingMQTTValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>/on
 	log.Printf("handleIncomingMQTTValue() topic: %s", msg.Topic)
 	log.Printf("MSG: %s\n", msg.Payload)
@@ -195,15 +249,50 @@ func (drv *Driver) doHandleIncomingMQTTValue(msg MQTTMessage) {
 	controlName := parts[4]
 	dev, found := drv.deviceMap[deviceName]
 	if !found {
-		if drv.acceptsExternalDevices {
-			// ...
-		} else {
-			log.Printf("UNKNOWN DEVICE: %s", deviceName)
-		}
+		log.Printf("UNKNOWN DEVICE: %s", deviceName)
 		return
 	}
 	if (dev.SendValue(controlName, msg.Payload)) {
 		drv.publishValue(dev, controlName, msg.Payload)
+	}
+}
+
+func (drv *Driver) handleDeviceTitle(msg MQTTMessage) {
+	deviceName := strings.Split(msg.Topic, "/")[2]
+	dev, err := drv.ensureExtDevice(deviceName)
+	if err != nil {
+		log.Printf("Cannot register external device %s: %s", deviceName, err)
+	}
+	if dev != nil { // nil would mean a local device
+		dev.SetTitle(msg.Payload)
+	}
+}
+
+func (drv *Driver) handleExternalControlValue(msg MQTTMessage) {
+	// /devices/<name>/controls/<control>
+	parts := strings.Split(msg.Topic, "/")
+	deviceName := parts[2]
+	controlName := parts[4]
+	dev, err := drv.ensureExtDevice(deviceName)
+	if err != nil {
+		log.Printf("Cannot register external device %s: %s", deviceName, err)
+	}
+	if dev != nil { // nil would mean a local device
+		dev.SendValue(controlName, msg.Payload)
+	}
+}
+
+func (drv *Driver) handleExternalControlType(msg MQTTMessage) {
+	// /devices/<name>/controls/<control>
+	parts := strings.Split(msg.Topic, "/")
+	deviceName := parts[2]
+	controlName := parts[4]
+	dev, err := drv.ensureExtDevice(deviceName)
+	if err != nil {
+		log.Printf("Cannot register external device %s: %s", deviceName, err)
+	}
+	if dev != nil { // nil would mean a local device
+		dev.SendControlType(controlName, msg.Payload)
 	}
 }
 
@@ -233,6 +322,13 @@ func (drv *Driver) Start() error {
 		ticker = time.NewTicker(time.Duration(drv.pollIntervalMs) * time.Millisecond)
 		pollChannel = ticker.C
 	}
+
+	if drv.acceptsExternalDevices {
+		drv.subscribe(drv.handleDeviceTitle, "/devices/+/meta/name")
+		drv.subscribe(drv.handleExternalControlValue, "/devices/+/controls/+")
+		drv.subscribe(drv.handleExternalControlType, "/devices/+/controls/+/meta/type")
+	}
+
 	go func () {
 		for {
 			select {
@@ -245,8 +341,8 @@ func (drv *Driver) Start() error {
 				return
 			case <- pollChannel:
 				drv.model.Poll()
-			case msg := <- drv.incomingMQTTValueCh:
-				drv.doHandleIncomingMQTTValue(msg)
+			case f := <- drv.mqttEventCh:
+				f()
 			}
 		}
 	}()
