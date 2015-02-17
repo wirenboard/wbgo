@@ -1,13 +1,15 @@
 package wbgo
 
 import (
+	"log"
+	"sort"
 	"testing"
 )
 
 type FakeModel struct {
 	Recorder
 	ModelBase
-	devices []*FakeDevice
+	devices map[string]*FakeDevice
 }
 
 type FakeDevice struct {
@@ -18,7 +20,7 @@ type FakeDevice struct {
 }
 
 func NewFakeModel(t *testing.T) (model *FakeModel) {
-	model = &FakeModel{devices: make([]*FakeDevice, 0, 100)}
+	model = &FakeModel{devices: make(map[string]*FakeDevice)}
 	model.InitRecorder(t)
 	return
 }
@@ -28,7 +30,13 @@ func (model *FakeModel) Poll () {
 }
 
 func (model *FakeModel) Start() error {
-	for _, dev := range model.devices {
+	names := make([]string, 0, len(model.devices))
+	for name := range model.devices {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		dev := model.devices[name]
 		model.Observer.OnNewDevice(dev)
 		dev.QueryParams()
 	}
@@ -37,6 +45,13 @@ func (model *FakeModel) Start() error {
 
 func (model *FakeModel) MakeDevice(name string, title string,
 	paramTypes map[string]string) (dev *FakeDevice) {
+	if _, dup := model.devices[name]; dup {
+		// MakeDevice may be invoked not from the
+		// test goroutine, but rather from driver's
+		// primary goroutine, so can't use testing's
+		// Fatalf here
+		log.Panicf("duplicate device name %s", name)
+	}
 	dev = &FakeDevice{
 		model: model,
 		paramTypes: make(map[string]string),
@@ -48,13 +63,25 @@ func (model *FakeModel) MakeDevice(name string, title string,
 		dev.paramTypes[k] = v
 		dev.paramValues[k] = "0"
 	}
-	model.devices = append(model.devices, dev)
+	model.devices[name] = dev
 	return
+}
+
+func (model *FakeModel) GetDevice(name string) *FakeDevice {
+	if dev, found := model.devices[name]; !found {
+		dev.model.T().Fatalf("unknown device %s", name)
+		return nil
+	} else {
+		return dev
+	}
 }
 
 func (dev *FakeDevice) SendValue(name, value string) bool {
 	if _, found := dev.paramTypes[name]; !found {
-		dev.model.T().Fatalf("trying to send unknown param %s (value %s)",
+		// cannot use dev.model.T().Fatalf() here because
+		// SendValue is invoked from goroutine other
+		// than the one running the test
+		log.Panicf("trying to send unknown param %s (value %s)",
 			name, value)
 	}
 	dev.paramValues[name] = value

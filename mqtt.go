@@ -7,21 +7,13 @@ import (
 const DISCONNECT_WAIT_MS = 100
 
 type PahoMQTTClient struct {
-	handler MQTTMessageHandler
 	innerClient *MQTT.MqttClient
 }
 
-func NewPahoMQTTClient(server, clientID string, handler MQTTMessageHandler) (client *PahoMQTTClient) {
-	client = &PahoMQTTClient{handler: handler}
+func NewPahoMQTTClient(server, clientID string) (client *PahoMQTTClient) {
 	opts := MQTT.NewClientOptions().AddBroker(server).SetClientId(clientID)
-	opts.SetDefaultPublishHandler(client.handleMessage)
-	client.innerClient = MQTT.NewClient(opts)
+	client = &PahoMQTTClient{MQTT.NewClient(opts)}
 	return
-}
-
-func (client *PahoMQTTClient) handleMessage(mc *MQTT.MqttClient, msg MQTT.Message) {
-	client.handler(MQTTMessage{msg.Topic(), string(msg.Payload()),
-		byte(msg.QoS()), msg.RetainedFlag()})
 }
 
 func (client *PahoMQTTClient) Start() {
@@ -46,17 +38,30 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 	}
 }
 
-func (client *PahoMQTTClient) Subscribe(topic string) {
-	filter, _ := MQTT.NewTopicFilter(topic, 1)
-	if receipt, err := client.innerClient.StartSubscription(nil, filter); err != nil {
+func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics... string) {
+	filters := make([]*MQTT.TopicFilter, len(topics))
+	for i, topic := range topics {
+		if filter, err := MQTT.NewTopicFilter(topic, 2); err != nil {
+			panic("bad subscription")
+		} else {
+			filters[i] = filter
+		}
+	}
+
+	wrappedCallback := func(client *MQTT.MqttClient, msg MQTT.Message) {
+		callback(MQTTMessage{msg.Topic(), string(msg.Payload()),
+			byte(msg.QoS()), msg.RetainedFlag()})
+	}
+
+	if receipt, err := client.innerClient.StartSubscription(wrappedCallback, filters...); err != nil {
 		panic(err)
 	} else {
 		<-receipt
 	}
 }
 
-func (client *PahoMQTTClient) Unsubscribe(topic string) {
-	if receipt, err := client.innerClient.EndSubscription(topic); err != nil {
+func (client *PahoMQTTClient) Unsubscribe(topics... string) {
+	if receipt, err := client.innerClient.EndSubscription(topics...); err != nil {
 		panic(err)
 	} else {
 		<-receipt

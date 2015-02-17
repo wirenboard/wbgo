@@ -2,8 +2,27 @@ package wbgo
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
+
+func topicPartsMatch(pattern []string, topic []string) bool {
+	if len(pattern) == 0 {
+		return len(topic) == 0
+	}
+
+	if pattern[0] == "#" {
+		return true
+	}
+
+	return len(topic) > 0 &&
+		(pattern[0] == "+" || (pattern[0] == topic[0])) &&
+		topicPartsMatch(pattern[1:], topic[1:])
+}
+
+func topicMatch(pattern string, topic string) bool {
+	return topicPartsMatch(strings.Split(pattern, "/"), strings.Split(topic, "/"))
+}
 
 func FormatMQTTMessage(message MQTTMessage) string {
 	suffix := ""
@@ -30,12 +49,13 @@ func NewFakeMQTTBroker (t *testing.T) (broker *FakeMQTTBroker) {
 
 func (broker *FakeMQTTBroker) Publish(origin string, message MQTTMessage) {
 	broker.Rec("%s -> %s: %s", origin, message.Topic, FormatMQTTMessage(message))
-	subs, found := broker.subscriptions[message.Topic]
-	if !found {
-		return
-	}
-	for _, client := range subs {
-		client.receive(message)
+	for pattern, subs := range broker.subscriptions {
+		if !topicMatch(pattern, message.Topic) {
+			continue
+		}
+		for _, client := range subs {
+			client.receive(message)
+		}
 	}
 }
 
@@ -70,19 +90,26 @@ func (broker *FakeMQTTBroker) Unsubscribe(client *FakeMQTTClient, topic string) 
 	}
 }
 
-func (broker *FakeMQTTBroker) MakeClient(id string, handler MQTTMessageHandler) *FakeMQTTClient {
-	return &FakeMQTTClient{id, false, broker, handler}
+func (broker *FakeMQTTBroker) MakeClient(id string) *FakeMQTTClient {
+	return &FakeMQTTClient{id, false, broker, make(map[string][]MQTTMessageHandler)}
 }
 
 type FakeMQTTClient struct {
 	id string
 	started bool
 	broker *FakeMQTTBroker
-	handler MQTTMessageHandler
+	callbackMap map[string][]MQTTMessageHandler
 }
 
 func (client *FakeMQTTClient) receive(message MQTTMessage) {
-	client.handler(message)
+	for topic, handlers := range client.callbackMap {
+		if !topicMatch(topic, message.Topic) {
+			continue
+		}
+		for _, handler := range handlers {
+			handler(message)
+		}
+	}
 }
 
 func (client *FakeMQTTClient) Start() {
@@ -109,12 +136,23 @@ func (client *FakeMQTTClient) Publish(message MQTTMessage) {
 	client.broker.Publish(client.id, message)
 }
 
-func (client *FakeMQTTClient) Subscribe(topic string) {
+func (client *FakeMQTTClient) Subscribe(callback MQTTMessageHandler, topics... string) {
 	client.ensureStarted()
-	client.broker.Subscribe(client, topic)
+	for _, topic := range topics {
+		client.broker.Subscribe(client, topic)
+		handlerList, found := client.callbackMap[topic]
+		if found {
+			client.callbackMap[topic] = append(handlerList, callback)
+		} else {
+			client.callbackMap[topic] = []MQTTMessageHandler{callback}
+		}
+	}
 }
 
-func (client *FakeMQTTClient) Unsubscribe(topic string) {
+func (client *FakeMQTTClient) Unsubscribe(topics... string) {
 	client.ensureStarted()
-	client.broker.Unsubscribe(client, topic)
+	for _, topic := range topics {
+		client.broker.Unsubscribe(client, topic)
+		delete(client.callbackMap, topic)
+	}
 }

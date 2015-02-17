@@ -19,14 +19,13 @@ type MQTTMessage struct {
 }
 
 type MQTTMessageHandler func(message MQTTMessage)
-type MQTTClientFactory func (handler MQTTMessageHandler) MQTTClient
 
 type MQTTClient interface {
 	Start()
 	Stop()
 	Publish(message MQTTMessage)
-	Subscribe(topic string)
-	Unsubscribe(topic string)
+	Subscribe(callback MQTTMessageHandler, topics... string)
+	Unsubscribe(topics... string)
 }
 
 type Model interface {
@@ -87,19 +86,22 @@ func (dev *DeviceBase) Observe(observer DeviceObserver) {
 type Driver struct {
 	model Model
 	client MQTTClient
-	messageCh chan MQTTMessage
+	incomingMQTTValueCh chan MQTTMessage
 	quit chan struct{}
 	poll chan time.Time
 	deviceMap map[string]DeviceModel
 	nextOrder map[string]int
 	autoPoll bool
 	pollIntervalMs int
+	acceptsExternalDevices bool
+	active bool
 }
 
-func NewDriver(model Model, makeClient MQTTClientFactory) (drv *Driver) {
+func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 	drv = &Driver{
 		model: model,
-		messageCh: make(chan MQTTMessage),
+		client: client,
+		incomingMQTTValueCh: make(chan MQTTMessage),
 		quit: make(chan struct{}),
 		poll: make(chan time.Time),
 		nextOrder: make(map[string]int),
@@ -107,7 +109,6 @@ func NewDriver(model Model, makeClient MQTTClientFactory) (drv *Driver) {
 		autoPoll: true,
 		pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
 	}
-	drv.client = makeClient(drv.handleMessage)
 	drv.model.Observe(drv)
 	return
 }
@@ -130,10 +131,6 @@ func (drv *Driver) PollInterval() int {
 
 func (drv *Driver) Poll() {
 	drv.poll <- time.Now()
-}
-
-func (drv *Driver) handleMessage(message MQTTMessage) {
-	drv.messageCh <- message
 }
 
 func (drv *Driver) topic(dev DeviceModel, sub ...string) string {
@@ -175,9 +172,13 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 		strconv.Itoa(nextOrder))
 	drv.nextOrder[devName] = nextOrder + 1
 	drv.publishValue(dev, controlName, value)
-	if !readOnly {
+	if !readOnly && !drv.acceptsExternalDevices {
 		log.Printf("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
-		drv.client.Subscribe(drv.controlTopic(dev, controlName, "on"))
+		drv.client.Subscribe(
+			func (msg MQTTMessage) {
+				drv.incomingMQTTValueCh <- msg
+			},
+			drv.controlTopic(dev, controlName, "on"))
 	}
 }
 
@@ -185,24 +186,20 @@ func (drv *Driver) OnValue(dev DeviceModel, controlName, value string) {
 	drv.publishValue(dev, controlName, value)
 }
 
-func (drv *Driver) doHandleMessage(msg MQTTMessage) {
+func (drv *Driver) doHandleIncomingMQTTValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>/on
-	log.Printf("TOPIC: %s", msg.Topic)
+	log.Printf("handleIncomingMQTTValue() topic: %s", msg.Topic)
 	log.Printf("MSG: %s\n", msg.Payload)
 	parts := strings.Split(msg.Topic, "/")
-	if len(parts) != 6 ||
-		parts[1] != "devices" ||
-		parts[3] != "controls" ||
-		parts[5] != "on" {
-		log.Printf("UNHANDLED TOPIC: %s", msg.Topic)
-		return
-	}
-
 	deviceName := parts[2]
 	controlName := parts[4]
 	dev, found := drv.deviceMap[deviceName]
 	if !found {
-		log.Printf("UNKNOWN DEVICE: %s", deviceName)
+		if drv.acceptsExternalDevices {
+			// ...
+		} else {
+			log.Printf("UNKNOWN DEVICE: %s", deviceName)
+		}
 		return
 	}
 	if (dev.SendValue(controlName, msg.Payload)) {
@@ -210,7 +207,22 @@ func (drv *Driver) doHandleMessage(msg MQTTMessage) {
 	}
 }
 
+func (drv *Driver) AcceptsExternalDevices() bool {
+	return drv.acceptsExternalDevices
+}
+
+func (drv *Driver) SetAcceptsExternalDevices(accepts bool) {
+	if drv.active {
+		panic("trying to do SetAcceptsExternalDevices() on an active driver")
+	}
+	drv.acceptsExternalDevices = accepts
+}
+
 func (drv *Driver) Start() error {
+	if drv.active {
+		return nil
+	}
+	drv.active = true
 	drv.client.Start()
 	if err := drv.model.Start(); err != nil {
 		return err
@@ -233,8 +245,8 @@ func (drv *Driver) Start() error {
 				return
 			case <- pollChannel:
 				drv.model.Poll()
-			case msg := <- drv.messageCh:
-				drv.doHandleMessage(msg)
+			case msg := <- drv.incomingMQTTValueCh:
+				drv.doHandleIncomingMQTTValue(msg)
 			}
 		}
 	}()
@@ -242,6 +254,9 @@ func (drv *Driver) Start() error {
 }
 
 func (drv *Driver) Stop() {
+	if !drv.active {
+		return
+	}
 	log.Printf("----(Stop)")
 	drv.quit <- struct{}{}
 }
