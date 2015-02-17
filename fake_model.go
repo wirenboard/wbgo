@@ -69,7 +69,7 @@ func (model *FakeModel) MakeDevice(name string, title string,
 
 func (model *FakeModel) GetDevice(name string) *FakeDevice {
 	if dev, found := model.devices[name]; !found {
-		dev.model.T().Fatalf("unknown device %s", name)
+		model.T().Fatalf("unknown device %s", name)
 		return nil
 	} else {
 		return dev
