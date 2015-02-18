@@ -172,10 +172,21 @@ func (drv *Driver) publishValue(dev DeviceModel, controlName, value string) {
 	drv.publish(drv.controlTopic(dev, controlName), value, 1)
 }
 
+func (drv *Driver) publishOnValue(dev DeviceModel, controlName, value string) {
+	drv.client.Publish(MQTTMessage{
+		drv.controlTopic(dev, controlName) + "/on",
+		value,
+		1,
+		false,
+	})
+}
+
 func (drv *Driver) OnNewDevice(dev DeviceModel) {
 	// this overrides a possibly created external device with same name
 	drv.deviceMap[dev.Name()] = dev
-	drv.publishMeta(drv.topic(dev, "meta", "name"), dev.Title())
+	if _, ext := dev.(ExternalDeviceModel); !ext {
+		drv.publishMeta(drv.topic(dev, "meta", "name"), dev.Title())
+	}
 	dev.Observe(drv)
 }
 
@@ -213,7 +224,11 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 }
 
 func (drv *Driver) OnValue(dev DeviceModel, controlName, value string) {
-	drv.publishValue(dev, controlName, value)
+	if _, ext := dev.(ExternalDeviceModel); ext {
+		drv.publishOnValue(dev, controlName, value)
+	} else {
+		drv.publishValue(dev, controlName, value)
+	}
 }
 
 func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, error) {
