@@ -109,8 +109,15 @@ func (dev *FakeDevice) SendValue(name, value string) bool {
 }
 
 func (dev *FakeDevice) QueryParams() {
-	for k, v := range dev.paramTypes {
-		dev.Observer.OnNewControl(dev, k, v, dev.paramValues[k], false)
+	// FIXME! sort
+	keys := make([]string, 0, len(dev.paramTypes))
+	for k := range dev.paramTypes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		paramType := dev.paramTypes[k]
+		dev.Observer.OnNewControl(dev, k, paramType, dev.paramValues[k], false)
 	}
 }
 
