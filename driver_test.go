@@ -52,7 +52,9 @@ func TestDriver(t *testing.T) {
 			"send: somedev.paramOne = 1",
 		)
 
-		dev.ReceiveValue("paramTwo", "1")
+		driver.CallSync(func () {
+			dev.ReceiveValue("paramTwo", "1")
+		})
 		broker.Verify(
 			"driver -> /devices/somedev/controls/paramTwo: [1] (QoS 1, retained)",
 		)
@@ -76,6 +78,9 @@ func TestExternalDevices(t *testing.T) {
 			"Subscribe -- driver: /devices/+/controls/+/meta/type",
 			"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		)
+		WaitFor(t, func () bool {
+			return model.HasDevice("somedev")
+		})
 		dev := model.GetDevice("somedev")
 		assert.NotEqual(t, nil, dev)
 

@@ -1,3 +1,4 @@
+// FIXME: !!! TBD: !!! On* stuff should only be called in the context of primary goroutine.
 package wbgo
 
 import (
@@ -9,6 +10,7 @@ import (
 )
 
 const (
+	EVENT_QUEUE_LEN = 100
 	DEFAULT_POLL_INTERVAL_MS = 5000
 )
 
@@ -56,9 +58,10 @@ type ExternalDeviceModel interface {
 	SendControlType(name, controlType string)
 }
 
-// TBD: Use ModelObserver interface
+// TBD: rename ModelObserver(?) (it's not just an observer)
 
 type ModelObserver interface {
+	CallSync(thunk func())
 	OnNewDevice(dev DeviceModel)
 }
 
@@ -103,7 +106,7 @@ func (dev *DeviceBase) Observe(observer DeviceObserver) {
 type Driver struct {
 	model Model
 	client MQTTClient
-	mqttEventCh chan func()
+	eventCh chan func()
 	quit chan struct{}
 	poll chan time.Time
 	deviceMap map[string]DeviceModel
@@ -118,7 +121,11 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 	drv = &Driver{
 		model: model,
 		client: client,
-		mqttEventCh: make(chan func()),
+		// Actually EVENT_QUEUE_LEN > 0 is only needed
+		// to avoid deadlocks in tests in a case when
+		// model change causes MQTT message to be generated
+		// that is passed back to the model
+		eventCh: make(chan func(), EVENT_QUEUE_LEN),
 		quit: make(chan struct{}),
 		poll: make(chan time.Time),
 		nextOrder: make(map[string]int),
@@ -194,9 +201,9 @@ func (drv *Driver) OnNewDevice(dev DeviceModel) {
 // the driver's primary goroutine
 func (drv *Driver) wrapMessageHandler(handler MQTTMessageHandler) MQTTMessageHandler {
 	return func (msg MQTTMessage) {
-		drv.mqttEventCh <- func () {
+		drv.CallSync(func () {
 			handler(msg)
-		}
+		})
 	}
 }
 
@@ -218,7 +225,7 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 	if !readOnly {
 		log.Printf("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
 		drv.subscribe(
-			drv.handleIncomingMQTTValue,
+			drv.handleIncomingMQTTOnValue,
 			drv.controlTopic(dev, controlName, "on"))
 	}
 }
@@ -255,7 +262,7 @@ func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, erro
 	}
 }
 
-func (drv *Driver) handleIncomingMQTTValue(msg MQTTMessage) {
+func (drv *Driver) handleIncomingMQTTOnValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>/on
 	log.Printf("handleIncomingMQTTValue() topic: %s", msg.Topic)
 	log.Printf("MSG: %s\n", msg.Payload)
@@ -267,7 +274,7 @@ func (drv *Driver) handleIncomingMQTTValue(msg MQTTMessage) {
 		log.Printf("UNKNOWN DEVICE: %s", deviceName)
 		return
 	}
-	if (dev.SendValue(controlName, msg.Payload)) {
+	if dev.SendValue(controlName, msg.Payload) {
 		drv.publishValue(dev, controlName, msg.Payload)
 	}
 }
@@ -276,7 +283,7 @@ func (drv *Driver) handleDeviceTitle(msg MQTTMessage) {
 	deviceName := strings.Split(msg.Topic, "/")[2]
 	dev, err := drv.ensureExtDevice(deviceName)
 	if err != nil {
-		log.Printf("Cannot register external device %s: %s", deviceName, err)
+		log.Printf("Not registering external device %s: %s", deviceName, err)
 	}
 	if dev != nil { // nil would mean a local device
 		dev.SetTitle(msg.Payload)
@@ -322,6 +329,10 @@ func (drv *Driver) SetAcceptsExternalDevices(accepts bool) {
 	drv.acceptsExternalDevices = accepts
 }
 
+func (drv *Driver) CallSync(thunk func()) {
+	drv.eventCh <- thunk
+}
+
 func (drv *Driver) Start() error {
 	if drv.active {
 		return nil
@@ -356,7 +367,7 @@ func (drv *Driver) Start() error {
 				return
 			case <- pollChannel:
 				drv.model.Poll()
-			case f := <- drv.mqttEventCh:
+			case f := <- drv.eventCh:
 				f()
 			}
 		}

@@ -88,6 +88,11 @@ func (model *FakeModel) AddDevice(name string) (ExternalDeviceModel, error) {
 	return dev, nil
 }
 
+func (model *FakeModel) HasDevice(name string) bool {
+	_, found := model.devices[name]
+	return found
+}
+
 func (model *FakeModel) GetDevice(name string) FakeDev {
 	if dev, found := model.devices[name]; !found {
 		model.T().Fatalf("unknown device %s", name)
