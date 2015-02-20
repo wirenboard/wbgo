@@ -71,6 +71,7 @@ func TestExternalDevices(t *testing.T) {
 	doTestDriver(t, func (driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel) {
 		driver.SetAcceptsExternalDevices(true)
 		driver.Start()
+		defer driver.Stop()
 		client.Publish(MQTTMessage{"/devices/somedev/meta/name", "SomeDev", 1, true})
 		broker.Verify(
 			"Subscribe -- driver: /devices/+/meta/name",
