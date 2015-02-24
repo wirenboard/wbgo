@@ -57,6 +57,7 @@ type ExternalDeviceModel interface {
 	DeviceModel
 	SetTitle(title string)
 	SendControlType(name, controlType string)
+	SendControlRange(name string, max float64)
 }
 
 // TBD: rename ModelObserver(?) (it's not just an observer)
@@ -67,7 +68,7 @@ type ModelObserver interface {
 }
 
 type DeviceObserver interface {
-	OnNewControl(dev DeviceModel, name, paramType, value string, readOnly bool)
+	OnNewControl(dev DeviceModel, name, paramType, value string, readOnly bool, max float64)
 	OnValue(dev DeviceModel, name, value string)
 }
 
@@ -214,7 +215,7 @@ func (drv *Driver) subscribe(handler MQTTMessageHandler, topics... string) {
 	drv.client.Subscribe(drv.wrapMessageHandler(handler), topics...)
 }
 
-func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value string, readOnly bool) {
+func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value string, readOnly bool, max float64) {
 	devName := dev.Name()
 	nextOrder, found := drv.nextOrder[devName]
 	if !found {
@@ -223,6 +224,10 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "type"), paramType)
 	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "order"),
 		strconv.Itoa(nextOrder))
+	if max >= 0 {
+		drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "max"),
+			fmt.Sprintf("%v", max))
+	}
 	drv.nextOrder[devName] = nextOrder + 1
 	drv.publishValue(dev, controlName, value)
 	if !readOnly {
@@ -321,6 +326,27 @@ func (drv *Driver) handleExternalControlType(msg MQTTMessage) {
 	}
 }
 
+func (drv *Driver) handleExternalControlMax(msg MQTTMessage) {
+	// /devices/<name>/controls/<control>/meta/max
+	parts := strings.Split(msg.Topic, "/")
+	deviceName := parts[2]
+	controlName := parts[4]
+	dev, err := drv.ensureExtDevice(deviceName)
+	if err != nil {
+		log.Printf("Cannot register external device %s: %s", deviceName, err)
+		return
+	}
+	if dev == nil { // nil would mean a local device
+		return
+	}
+	max, err := strconv.ParseFloat(msg.Payload, 64)
+	if err != nil {
+		log.Printf("Cannot parse max value for device %s control %s", deviceName, controlName)
+		return
+	}
+	dev.SendControlRange(controlName, max)
+}
+
 func (drv *Driver) AcceptsExternalDevices() bool {
 	return drv.acceptsExternalDevices
 }
@@ -356,6 +382,7 @@ func (drv *Driver) Start() error {
 		drv.subscribe(drv.handleDeviceTitle, "/devices/+/meta/name")
 		drv.subscribe(drv.handleExternalControlValue, "/devices/+/controls/+")
 		drv.subscribe(drv.handleExternalControlType, "/devices/+/controls/+/meta/type")
+		drv.subscribe(drv.handleExternalControlMax, "/devices/+/controls/+/meta/max")
 	}
 
 	go func () {

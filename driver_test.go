@@ -77,6 +77,7 @@ func TestExternalDevices(t *testing.T) {
 			"Subscribe -- driver: /devices/+/meta/name",
 			"Subscribe -- driver: /devices/+/controls/+",
 			"Subscribe -- driver: /devices/+/controls/+/meta/type",
+			"Subscribe -- driver: /devices/+/controls/+/meta/max",
 			"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		)
 		WaitFor(t, func () bool {
@@ -114,6 +115,15 @@ func TestExternalDevices(t *testing.T) {
 		)
 		assert.Equal(t, "", dev.GetValue("paramTwo"))
 		assert.Equal(t, "pressure", dev.GetType("paramTwo"))
+
+		// FIXME: should use separate 'range' cell
+		client.Publish(MQTTMessage{"/devices/somedev/controls/paramTwo/meta/max", "1000", 1, true})
+		broker.Verify(
+			"tst -> /devices/somedev/controls/paramTwo/meta/max: [1000] (QoS 1, retained)",
+		)
+		model.Verify(
+			"max value for somedev.paramTwo is: 1000",
+		)
 
 		client.Publish(MQTTMessage{"/devices/somedev/controls/paramTwo", "755", 1, true})
 		broker.Verify(

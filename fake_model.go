@@ -122,7 +122,7 @@ func (dev *FakeDevice) QueryParams() {
 	sort.Strings(keys)
 	for _, k := range keys {
 		paramType := dev.paramTypes[k]
-		dev.Observer.OnNewControl(dev, k, paramType, dev.paramValues[k], false)
+		dev.Observer.OnNewControl(dev, k, paramType, dev.paramValues[k], false, -1)
 	}
 }
 
@@ -148,4 +148,8 @@ func (dev *FakeDevice) GetType(name string) string {
 func (dev *FakeExtDevice) SendControlType(name, controlType string) {
 	dev.paramTypes[name] = controlType
 	dev.model.Rec("the type of %s.%s is: %s", dev.DevName, name, controlType)
+}
+
+func (dev *FakeExtDevice) SendControlRange(name string, max float64) {
+	dev.model.Rec("max value for %s.%s is: %v", dev.DevName, name, max)
 }
