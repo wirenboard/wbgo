@@ -50,7 +50,9 @@ func (rec *Recorder) Verify(logs... string) {
 }
 
 func (rec *Recorder) Reset() {
+	close(rec.ch)
 	rec.logs = make([]string, 0, 1000)
+	rec.ch = make(chan struct{}, 1000)
 }
 
 func (rec *Recorder) T() *testing.T {
