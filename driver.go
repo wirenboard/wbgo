@@ -33,6 +33,7 @@ type MQTTClient interface {
 
 type Model interface {
 	Start() error
+	Stop()
 	Observe(observer ModelObserver)
 	Poll()
 }
@@ -79,6 +80,8 @@ func (model *ModelBase) Observe(observer ModelObserver) {
 }
 
 func (model *ModelBase) Poll() {}
+
+func (model *ModelBase) Stop() {}
 
 type DeviceBase struct {
 	DevName string
@@ -363,6 +366,7 @@ func (drv *Driver) Start() error {
 				if ticker != nil {
 					ticker.Stop()
 				}
+				drv.model.Stop()
 				drv.client.Stop()
 				return
 			case <- pollChannel:
