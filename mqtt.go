@@ -1,6 +1,8 @@
 package wbgo
 
 import (
+	"log"
+	"strings"
 	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
 )
 
@@ -31,11 +33,13 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 	m := MQTT.NewMessage([]byte(message.Payload))
 	m.SetQoS(MQTT.QoS(message.QoS))
 	m.SetRetainedFlag(message.Retained)
-	if ch := client.innerClient.PublishMessage(message.Topic, m); ch != nil {
-		<- ch
-	} else {
-		panic("PublishMessage() failed")
-	}
+	go func () {
+		if ch := client.innerClient.PublishMessage(message.Topic, m); ch != nil {
+			<- ch
+		} else {
+			panic("PublishMessage() failed")
+		}
+	}()
 }
 
 func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics... string) {
@@ -49,21 +53,28 @@ func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics... s
 	}
 
 	wrappedCallback := func(client *MQTT.MqttClient, msg MQTT.Message) {
+		log.Printf("GOT MESSAGE: %s --- %s", msg.Topic(), string(msg.Payload()))
 		callback(MQTTMessage{msg.Topic(), string(msg.Payload()),
 			byte(msg.QoS()), msg.RetainedFlag()})
 	}
 
-	if receipt, err := client.innerClient.StartSubscription(wrappedCallback, filters...); err != nil {
-		panic(err)
-	} else {
-		<-receipt
-	}
+	log.Printf("SUB: %s", strings.Join(topics, "; "))
+	go func () {
+		if receipt, err := client.innerClient.StartSubscription(wrappedCallback, filters...); err != nil {
+			panic(err)
+		} else {
+			<-receipt
+			log.Printf("SUB DONE: %s", strings.Join(topics, "; "))
+		}
+	}()
 }
 
 func (client *PahoMQTTClient) Unsubscribe(topics... string) {
-	if receipt, err := client.innerClient.EndSubscription(topics...); err != nil {
-		panic(err)
-	} else {
-		<-receipt
-	}
+	go func () {
+		if receipt, err := client.innerClient.EndSubscription(topics...); err != nil {
+			panic(err)
+		} else {
+			<-receipt
+		}
+	}()
 }
