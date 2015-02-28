@@ -37,7 +37,7 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 		if ch := client.innerClient.PublishMessage(message.Topic, m); ch != nil {
 			<- ch
 		} else {
-			panic("PublishMessage() failed")
+			log.Printf("WARNING: PublishMessage() failed for topic: ", message.Topic) // FIXME
 		}
 	}()
 }
