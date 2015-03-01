@@ -39,12 +39,25 @@ type SubscriptionMap map[string]SubscriptionList
 type FakeMQTTBroker struct {
 	Recorder
 	subscriptions SubscriptionMap
+	waitForRetained bool
+	readyChannels []chan struct{}
 }
 
 func NewFakeMQTTBroker (t *testing.T) (broker *FakeMQTTBroker) {
 	broker = &FakeMQTTBroker{subscriptions: make(SubscriptionMap)}
 	broker.InitRecorder(t)
 	return
+}
+
+func (broker *FakeMQTTBroker) SetWaitForRetained(waitForRetained bool) {
+	broker.waitForRetained = waitForRetained
+}
+
+func (broker *FakeMQTTBroker) SetReady() {
+	for _, ch := range broker.readyChannels {
+		close(ch)
+	}
+	broker.readyChannels = nil
 }
 
 func (broker *FakeMQTTBroker) Publish(origin string, message MQTTMessage) {
@@ -90,8 +103,18 @@ func (broker *FakeMQTTBroker) Unsubscribe(client *FakeMQTTClient, topic string) 
 	}
 }
 
-func (broker *FakeMQTTBroker) MakeClient(id string) *FakeMQTTClient {
-	return &FakeMQTTClient{id, false, broker, make(map[string][]MQTTMessageHandler)}
+func (broker *FakeMQTTBroker) MakeClient(id string) (client *FakeMQTTClient) {
+	client = &FakeMQTTClient{
+		id,
+		false,
+		broker,
+		make(map[string][]MQTTMessageHandler),
+		make(chan struct{}),
+	}
+	if broker.waitForRetained {
+		broker.readyChannels = append(broker.readyChannels, client.ready)
+	}
+	return client
 }
 
 type FakeMQTTClient struct {
@@ -99,6 +122,7 @@ type FakeMQTTClient struct {
 	started bool
 	broker *FakeMQTTBroker
 	callbackMap map[string][]MQTTMessageHandler
+	ready chan struct{}
 }
 
 func (client *FakeMQTTClient) receive(message MQTTMessage) {
@@ -112,11 +136,18 @@ func (client *FakeMQTTClient) receive(message MQTTMessage) {
 	}
 }
 
+func (client *FakeMQTTClient) ReadyChannel() <-chan struct{} {
+	return client.ready
+}
+
 func (client *FakeMQTTClient) Start() {
 	if (client.started) {
 		client.broker.T().Fatalf("%s: client already started", client.id)
 	}
 	client.started = true
+	if !client.broker.waitForRetained {
+		close(client.ready)
+	}
 }
 
 func (client *FakeMQTTClient) Stop() {

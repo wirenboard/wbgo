@@ -20,7 +20,7 @@ func doTestDriver(t *testing.T,
 
 func TestDriver(t *testing.T) {
 	doTestDriver(t, func (driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel) {
-		dev := model.MakeDevice("somedev", "SomeDev", map[string]string {
+		dev := model.MakeLocalDevice("somedev", "SomeDev", map[string]string {
 			"paramOne": "switch",
 			"paramTwo": "switch",
 		})
@@ -49,7 +49,7 @@ func TestDriver(t *testing.T) {
 			"driver -> /devices/somedev/controls/paramOne: [1] (QoS 1, retained)",
 		)
 		model.Verify(
-			"send: somedev.paramOne = 1",
+			"AcceptOnValue: somedev.paramOne = 1",
 		)
 
 		driver.CallSync(func () {
@@ -91,7 +91,7 @@ func TestExternalDevices(t *testing.T) {
 			"tst -> /devices/somedev/controls/paramOne: [42] (QoS 1, retained)",
 		)
 		model.Verify(
-			"send: somedev.paramOne = 42",
+			"AcceptValue: somedev.paramOne = 42",
 		)
 		assert.Equal(t, "42", dev.GetValue("paramOne"))
 		assert.Equal(t, "text", dev.GetType("paramOne"))
@@ -130,7 +130,7 @@ func TestExternalDevices(t *testing.T) {
 			"tst -> /devices/somedev/controls/paramTwo: [755] (QoS 1, retained)",
 		)
 		model.Verify(
-			"send: somedev.paramTwo = 755",
+			"AcceptValue: somedev.paramTwo = 755",
 		)
 		assert.Equal(t, "755", dev.GetValue("paramTwo"))
 		assert.Equal(t, "pressure", dev.GetType("paramTwo"))

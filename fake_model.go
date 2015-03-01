@@ -16,6 +16,7 @@ type FakeDev interface {
 	DeviceModel
 	GetValue(name string) string
 	GetType(name string) string
+	QueryParams()
 }
 
 type FakeDevice struct {
@@ -23,6 +24,10 @@ type FakeDevice struct {
 	model *FakeModel
 	paramTypes map[string]string
 	paramValues map[string]string
+}
+
+type FakeLocalDevice struct {
+	FakeDevice
 }
 
 type FakeExtDevice struct {
@@ -48,7 +53,7 @@ func (model *FakeModel) Start() error {
 	for _, name := range names {
 		dev := model.devices[name]
 		model.Observer.OnNewDevice(dev)
-		dev.(*FakeDevice).QueryParams()
+		dev.(FakeDev).QueryParams()
 	}
 	return nil
 }
@@ -64,16 +69,16 @@ func newFakeDevice(model *FakeModel, name string, title string) (dev *FakeDevice
 	return dev
 }
 
-func (model *FakeModel) MakeDevice(name string, title string,
-	paramTypes map[string]string) (dev *FakeDevice) {
+func (model *FakeModel) MakeLocalDevice(name string, title string,
+	paramTypes map[string]string) (dev *FakeLocalDevice) {
 	if _, dup := model.devices[name]; dup {
-		// MakeDevice may be invoked not from the
+		// MakeLocalDevice may be invoked not from the
 		// test goroutine, but rather from driver's
 		// primary goroutine, so can't use testing's
 		// Fatalf here
 		log.Panicf("duplicate device name %s", name)
 	}
-	dev = newFakeDevice(model, name, title)
+	dev = &FakeLocalDevice{*newFakeDevice(model, name, title)}
 	for k, v := range paramTypes {
 		dev.paramTypes[k] = v
 		dev.paramValues[k] = "0"
@@ -82,7 +87,7 @@ func (model *FakeModel) MakeDevice(name string, title string,
 	return
 }
 
-func (model *FakeModel) AddDevice(name string) (ExternalDeviceModel, error) {
+func (model *FakeModel) AddExternalDevice(name string) (ExternalDeviceModel, error) {
 	dev := &FakeExtDevice{*newFakeDevice(model, name, name)}
 	model.devices[name] = dev
 	return dev, nil
@@ -102,15 +107,15 @@ func (model *FakeModel) GetDevice(name string) FakeDev {
 	}
 }
 
-// TBD: rename SendValue / ReceiveValue
+// TBD: rename ReceiveValue
 
-func (dev *FakeDevice) SendValue(name, value string) bool {
+func (dev *FakeDevice) AcceptValue(name, value string) {
 	if _, found := dev.paramTypes[name]; !found {
 		dev.paramTypes[name] = "text"
 	}
 	dev.paramValues[name] = value
-	dev.model.Rec("send: %s.%s = %s", dev.DevName, name, value)
-	return true
+	dev.model.Rec("AcceptValue: %s.%s = %s", dev.DevName, name, value)
+	return
 }
 
 func (dev *FakeDevice) QueryParams() {
@@ -145,11 +150,21 @@ func (dev *FakeDevice) GetType(name string) string {
 	return dev.paramTypes[name]
 }
 
-func (dev *FakeExtDevice) SendControlType(name, controlType string) {
+
+func (dev *FakeLocalDevice) AcceptOnValue(name, value string) bool {
+	if _, found := dev.paramTypes[name]; !found {
+		dev.paramTypes[name] = "text"
+	}
+	dev.paramValues[name] = value
+	dev.model.Rec("AcceptOnValue: %s.%s = %s", dev.DevName, name, value)
+	return true
+}
+
+func (dev *FakeExtDevice) AcceptControlType(name, controlType string) {
 	dev.paramTypes[name] = controlType
 	dev.model.Rec("the type of %s.%s is: %s", dev.DevName, name, controlType)
 }
 
-func (dev *FakeExtDevice) SendControlRange(name string, max float64) {
+func (dev *FakeExtDevice) AcceptControlRange(name string, max float64) {
 	dev.model.Rec("max value for %s.%s is: %v", dev.DevName, name, max)
 }

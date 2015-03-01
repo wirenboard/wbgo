@@ -24,6 +24,7 @@ type MQTTMessage struct {
 type MQTTMessageHandler func(message MQTTMessage)
 
 type MQTTClient interface {
+	ReadyChannel() <-chan struct{}
 	Start()
 	Stop()
 	Publish(message MQTTMessage)
@@ -41,29 +42,39 @@ type Model interface {
 // ExtendedModel is a Model that supports external devices
 type ExtendedModel interface {
 	Model
-	AddDevice(name string) (ExternalDeviceModel, error)
+	AddExternalDevice(name string) (ExternalDeviceModel, error)
 }
 
 type DeviceModel interface {
 	Name() string
 	Title() string
-	// SendValue sends the specified control value to the target device
-	// and returns true if the value should be automatically echoed back
-	SendValue(name, value string) bool
 	Observe(observer DeviceObserver)
+	// AcceptOnValue accepts the specified control value sent via an MQTT value topic
+	// (not .../on). For local devices, that can be a retained value, for external
+	// devices, the current control value
+	AcceptValue(name, value string)
+}
+
+type LocalDeviceModel interface {
+	DeviceModel
+	// AcceptOnValue accepts the specified control value sent via an MQTT .../on topic
+	// for the target device and returns true if the value should be automatically
+	// echoed back
+	AcceptOnValue(name, value string) bool
 }
 
 type ExternalDeviceModel interface {
 	DeviceModel
 	SetTitle(title string)
-	SendControlType(name, controlType string)
-	SendControlRange(name string, max float64)
+	AcceptControlType(name, controlType string)
+	AcceptControlRange(name string, max float64)
 }
 
 // TBD: rename ModelObserver(?) (it's not just an observer)
 
 type ModelObserver interface {
 	CallSync(thunk func())
+	WhenReady(thunk func())
 	OnNewDevice(dev DeviceModel)
 }
 
@@ -119,6 +130,8 @@ type Driver struct {
 	pollIntervalMs int
 	acceptsExternalDevices bool
 	active bool
+	ready bool
+	whenReady *DeferredList
 }
 
 func NewDriver(model Model, client MQTTClient) (drv *Driver) {
@@ -137,6 +150,7 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		autoPoll: true,
 		pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
 	}
+	drv.whenReady = NewDeferredList(drv.CallSync)
 	drv.model.Observe(drv)
 	return
 }
@@ -233,7 +247,7 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 	if !readOnly {
 		log.Printf("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
 		drv.subscribe(
-			drv.handleIncomingMQTTOnValue,
+			drv.handleIncomingControlOnValue,
 			drv.controlTopic(dev, controlName, "on"))
 	}
 }
@@ -246,15 +260,10 @@ func (drv *Driver) OnValue(dev DeviceModel, controlName, value string) {
 	}
 }
 
-func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, error) {
+func (drv *Driver) ensureDevice(deviceName string) (DeviceModel, error) {
 	dev, found := drv.deviceMap[deviceName]
 	if found {
-		extDev, ok := dev.(ExternalDeviceModel)
-		if ok {
-			return extDev, nil
-		} else {
-			return nil, nil
-		}
+		return dev, nil
 	}
 
 	if !drv.acceptsExternalDevices {
@@ -262,7 +271,7 @@ func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, erro
 	}
 
 	extModel := drv.model.(ExtendedModel)
-	if dev, err := extModel.AddDevice(deviceName); err != nil {
+	if dev, err := extModel.AddExternalDevice(deviceName); err != nil {
 		return nil, err
 	} else {
 		drv.deviceMap[deviceName] = dev
@@ -270,7 +279,21 @@ func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, erro
 	}
 }
 
-func (drv *Driver) handleIncomingMQTTOnValue(msg MQTTMessage) {
+func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, error) {
+	dev, err := drv.ensureDevice(deviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	extDev, ok := dev.(ExternalDeviceModel)
+	if ok {
+		return extDev, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func (drv *Driver) handleIncomingControlOnValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>/on
 	log.Printf("handleIncomingMQTTValue() topic: %s", msg.Topic)
 	log.Printf("MSG: %s\n", msg.Payload)
@@ -282,7 +305,7 @@ func (drv *Driver) handleIncomingMQTTOnValue(msg MQTTMessage) {
 		log.Printf("UNKNOWN DEVICE: %s", deviceName)
 		return
 	}
-	if dev.SendValue(controlName, msg.Payload) {
+	if dev.(LocalDeviceModel).AcceptOnValue(controlName, msg.Payload) {
 		drv.publishValue(dev, controlName, msg.Payload)
 	}
 }
@@ -298,17 +321,24 @@ func (drv *Driver) handleDeviceTitle(msg MQTTMessage) {
 	}
 }
 
-func (drv *Driver) handleExternalControlValue(msg MQTTMessage) {
+func (drv *Driver) handleIncomingControlValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>
 	parts := strings.Split(msg.Topic, "/")
 	deviceName := parts[2]
 	controlName := parts[4]
-	dev, err := drv.ensureExtDevice(deviceName)
+	var dev DeviceModel
+	var err error
+	if drv.ready {
+		dev, err = drv.ensureExtDevice(deviceName)
+	} else {
+		// not ready yet - may accept retained values for local devices
+		dev, err = drv.ensureDevice(deviceName)
+	}
 	if err != nil {
 		log.Printf("Cannot register external device %s: %s", deviceName, err)
 	}
 	if dev != nil { // nil would mean a local device
-		dev.SendValue(controlName, msg.Payload)
+		dev.AcceptValue(controlName, msg.Payload)
 	}
 }
 
@@ -322,7 +352,7 @@ func (drv *Driver) handleExternalControlType(msg MQTTMessage) {
 		log.Printf("Cannot register external device %s: %s", deviceName, err)
 	}
 	if dev != nil { // nil would mean a local device
-		dev.SendControlType(controlName, msg.Payload)
+		dev.AcceptControlType(controlName, msg.Payload)
 	}
 }
 
@@ -344,7 +374,7 @@ func (drv *Driver) handleExternalControlMax(msg MQTTMessage) {
 		log.Printf("Cannot parse max value for device %s control %s", deviceName, controlName)
 		return
 	}
-	dev.SendControlRange(controlName, max)
+	dev.AcceptControlRange(controlName, max)
 }
 
 func (drv *Driver) AcceptsExternalDevices() bool {
@@ -360,6 +390,10 @@ func (drv *Driver) SetAcceptsExternalDevices(accepts bool) {
 
 func (drv *Driver) CallSync(thunk func()) {
 	drv.eventCh <- thunk
+}
+
+func (drv *Driver) WhenReady(thunk func()) {
+	drv.whenReady.MaybeDefer(thunk)
 }
 
 func (drv *Driver) Start() error {
@@ -380,14 +414,19 @@ func (drv *Driver) Start() error {
 
 	if drv.acceptsExternalDevices {
 		drv.subscribe(drv.handleDeviceTitle, "/devices/+/meta/name")
-		drv.subscribe(drv.handleExternalControlValue, "/devices/+/controls/+")
+		drv.subscribe(drv.handleIncomingControlValue, "/devices/+/controls/+")
 		drv.subscribe(drv.handleExternalControlType, "/devices/+/controls/+/meta/type")
 		drv.subscribe(drv.handleExternalControlMax, "/devices/+/controls/+/meta/max")
 	}
 
 	go func () {
+		readyCh := drv.client.ReadyChannel() 
 		for {
 			select {
+			case <- readyCh:
+				drv.whenReady.Ready()
+				readyCh = nil
+				drv.ready = true
 			case <- drv.quit:
 				log.Printf("Driver: stopping the client")
 				if ticker != nil {

@@ -2,6 +2,9 @@ package wbgo
 
 import (
 	"log"
+	"fmt"
+	"time"
+	"math/rand"
 	"strings"
 	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
 )
@@ -10,18 +13,59 @@ const DISCONNECT_WAIT_MS = 100
 
 type PahoMQTTClient struct {
 	innerClient *MQTT.MqttClient
+	waitForRetained bool
+	ready chan struct{}
 }
 
-func NewPahoMQTTClient(server, clientID string) (client *PahoMQTTClient) {
+func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *PahoMQTTClient) {
 	opts := MQTT.NewClientOptions().AddBroker(server).SetClientId(clientID)
-	client = &PahoMQTTClient{MQTT.NewClient(opts)}
+	client = &PahoMQTTClient{
+		MQTT.NewClient(opts),
+		waitForRetained,
+		make(chan struct{}),
+	}
 	return
+}
+
+func (client *PahoMQTTClient) ReadyChannel() <-chan struct{} {
+	return client.ready
 }
 
 func (client *PahoMQTTClient) Start() {
 	_, err := client.innerClient.Start()
 	if err != nil {
 		panic(err)
+	}
+	if !client.waitForRetained {
+		close(client.ready)
+	} else {
+		// There's no guarantee that messages with different QoS don't get
+		// mixed up, thus we check QoS 1 and QoS 2 for retained messages here.
+		// According to the standard, our message will arrive after the
+		// old messages.
+		// On the other hand, there's no guarantee that QoS 0 messages
+		// will arrive at all, so we don't check for QoS 0 messages here.
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		waitTopic := fmt.Sprintf("/wbretainhack/%16x%16x", r.Int63(), r.Int63())
+		got1, got2 := false, false
+		client.Subscribe(func (msg MQTTMessage) {
+			switch {
+			case got1 && got2:
+				// avoid closing the channel twice upon QoS1
+				// message duplication
+				return
+			case msg.Payload == "1":
+				got1 = true
+			case msg.Payload == "2":
+				got2 = true
+			}
+			if got1 && got2 {
+				client.Unsubscribe(waitTopic)
+				close(client.ready)
+			}
+		}, waitTopic)
+		client.Publish(MQTTMessage{Topic: waitTopic, Payload: "1", QoS: 1})
+		client.Publish(MQTTMessage{Topic: waitTopic, Payload: "2", QoS: 2})
 	}
 }
 
