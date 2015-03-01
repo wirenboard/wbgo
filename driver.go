@@ -2,7 +2,6 @@
 package wbgo
 
 import (
-	"log"
 	"fmt"
 	"time"
 	"strings"
@@ -245,7 +244,7 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 	drv.nextOrder[devName] = nextOrder + 1
 	drv.publishValue(dev, controlName, value)
 	if !readOnly {
-		log.Printf("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
+		Debug.Println("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
 		drv.subscribe(
 			drv.handleIncomingControlOnValue,
 			drv.controlTopic(dev, controlName, "on"))
@@ -295,14 +294,14 @@ func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, erro
 
 func (drv *Driver) handleIncomingControlOnValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>/on
-	log.Printf("handleIncomingMQTTValue() topic: %s", msg.Topic)
-	log.Printf("MSG: %s\n", msg.Payload)
+	Debug.Printf("handleIncomingMQTTValue() topic: %s", msg.Topic)
+	Debug.Printf("MSG: %s\n", msg.Payload)
 	parts := strings.Split(msg.Topic, "/")
 	deviceName := parts[2]
 	controlName := parts[4]
 	dev, found := drv.deviceMap[deviceName]
 	if !found {
-		log.Printf("UNKNOWN DEVICE: %s", deviceName)
+		Error.Printf("UNKNOWN DEVICE: %s", deviceName)
 		return
 	}
 	if dev.(LocalDeviceModel).AcceptOnValue(controlName, msg.Payload) {
@@ -314,7 +313,7 @@ func (drv *Driver) handleDeviceTitle(msg MQTTMessage) {
 	deviceName := strings.Split(msg.Topic, "/")[2]
 	dev, err := drv.ensureExtDevice(deviceName)
 	if err != nil {
-		log.Printf("Not registering external device %s: %s", deviceName, err)
+		Warn.Printf("Not registering external device %s: %s", deviceName, err)
 	}
 	if dev != nil { // nil would mean a local device
 		dev.SetTitle(msg.Payload)
@@ -335,7 +334,7 @@ func (drv *Driver) handleIncomingControlValue(msg MQTTMessage) {
 		dev, err = drv.ensureDevice(deviceName)
 	}
 	if err != nil {
-		log.Printf("Cannot register external device %s: %s", deviceName, err)
+		Error.Printf("Cannot register external device %s: %s", deviceName, err)
 	}
 	if dev != nil { // nil would mean a local device
 		dev.AcceptValue(controlName, msg.Payload)
@@ -349,7 +348,7 @@ func (drv *Driver) handleExternalControlType(msg MQTTMessage) {
 	controlName := parts[4]
 	dev, err := drv.ensureExtDevice(deviceName)
 	if err != nil {
-		log.Printf("Cannot register external device %s: %s", deviceName, err)
+		Error.Printf("Cannot register external device %s: %s", deviceName, err)
 	}
 	if dev != nil { // nil would mean a local device
 		dev.AcceptControlType(controlName, msg.Payload)
@@ -363,7 +362,7 @@ func (drv *Driver) handleExternalControlMax(msg MQTTMessage) {
 	controlName := parts[4]
 	dev, err := drv.ensureExtDevice(deviceName)
 	if err != nil {
-		log.Printf("Cannot register external device %s: %s", deviceName, err)
+		Error.Printf("Cannot register external device %s: %s", deviceName, err)
 		return
 	}
 	if dev == nil { // nil would mean a local device
@@ -371,7 +370,7 @@ func (drv *Driver) handleExternalControlMax(msg MQTTMessage) {
 	}
 	max, err := strconv.ParseFloat(msg.Payload, 64)
 	if err != nil {
-		log.Printf("Cannot parse max value for device %s control %s", deviceName, controlName)
+		Error.Printf("Cannot parse max value for device %s control %s", deviceName, controlName)
 		return
 	}
 	dev.AcceptControlRange(controlName, max)
@@ -428,7 +427,7 @@ func (drv *Driver) Start() error {
 				readyCh = nil
 				drv.ready = true
 			case <- drv.quit:
-				log.Printf("Driver: stopping the client")
+				Debug.Printf("Driver: stopping")
 				if ticker != nil {
 					ticker.Stop()
 				}
@@ -449,6 +448,6 @@ func (drv *Driver) Stop() {
 	if !drv.active {
 		return
 	}
-	log.Printf("----(Stop)")
+	Debug.Printf("Driver.Stop()")
 	drv.quit <- struct{}{}
 }

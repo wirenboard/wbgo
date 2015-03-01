@@ -1,7 +1,6 @@
 package wbgo
 
 import (
-	"log"
 	"sort"
 	"testing"
 )
@@ -76,7 +75,7 @@ func (model *FakeModel) MakeLocalDevice(name string, title string,
 		// test goroutine, but rather from driver's
 		// primary goroutine, so can't use testing's
 		// Fatalf here
-		log.Panicf("duplicate device name %s", name)
+		Error.Panicf("duplicate device name %s", name)
 	}
 	dev = &FakeLocalDevice{*newFakeDevice(model, name, title)}
 	for k, v := range paramTypes {

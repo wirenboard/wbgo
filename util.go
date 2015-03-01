@@ -1,7 +1,6 @@
 package wbgo
 
 import (
-	"log"
 	"sync"
 	"reflect"
 )
@@ -29,7 +28,7 @@ func Visit(visitor interface{}, thing interface{}, prefix string, args... interf
 	methodName := prefix + typeName
 	if !doVisit(visitor, thing, methodName, args) &&
 		!doVisit(visitor, thing, prefix + "Anything", args) {
-		log.Printf("visit: no visitor method for %s", typeName)
+		Debug.Printf("visit: no visitor method for %s", typeName)
 		return
 	}
 }

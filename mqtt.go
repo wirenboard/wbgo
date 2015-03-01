@@ -1,7 +1,6 @@
 package wbgo
 
 import (
-	"log"
 	"fmt"
 	"time"
 	"math/rand"
@@ -81,7 +80,7 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 		if ch := client.innerClient.PublishMessage(message.Topic, m); ch != nil {
 			<- ch
 		} else {
-			log.Printf("WARNING: PublishMessage() failed for topic: ", message.Topic) // FIXME
+			Error.Printf("PublishMessage() failed for topic: ", message.Topic) // FIXME
 		}
 	}()
 }
@@ -97,18 +96,18 @@ func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics... s
 	}
 
 	wrappedCallback := func(client *MQTT.MqttClient, msg MQTT.Message) {
-		log.Printf("GOT MESSAGE: %s --- %s", msg.Topic(), string(msg.Payload()))
+		Debug.Printf("GOT MESSAGE: %s --- %s", msg.Topic(), string(msg.Payload()))
 		callback(MQTTMessage{msg.Topic(), string(msg.Payload()),
 			byte(msg.QoS()), msg.RetainedFlag()})
 	}
 
-	log.Printf("SUB: %s", strings.Join(topics, "; "))
+	Debug.Printf("SUB: %s", strings.Join(topics, "; "))
 	go func () {
 		if receipt, err := client.innerClient.StartSubscription(wrappedCallback, filters...); err != nil {
 			panic(err)
 		} else {
 			<-receipt
-			log.Printf("SUB DONE: %s", strings.Join(topics, "; "))
+			Debug.Printf("SUB DONE: %s", strings.Join(topics, "; "))
 		}
 	}()
 }
