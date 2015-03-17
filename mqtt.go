@@ -1,6 +1,7 @@
 package wbgo
 
 import (
+	"os"
 	"fmt"
 	"time"
 	"math/rand"
@@ -17,6 +18,11 @@ type PahoMQTTClient struct {
 }
 
 func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *PahoMQTTClient) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "localhost"
+	}
+	clientID = fmt.Sprintf("%s-%s-%d", clientID, hostname, os.Getpid())
 	opts := MQTT.NewClientOptions().AddBroker(server).SetClientId(clientID)
 	client = &PahoMQTTClient{
 		MQTT.NewClient(opts),
