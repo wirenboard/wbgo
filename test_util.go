@@ -2,6 +2,7 @@ package wbgo
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"time"
 	"testing"
@@ -98,4 +99,41 @@ func (rec *Recorder) SkipTill(log string) {
 
 func (rec *Recorder) T() *testing.T {
 	return rec.t
+}
+
+// TestLog makes it possible to use log module with testing's
+// logging functions, so that the logging output is only
+// shown when the test fails. Note that a part at the end
+// of output that is not newline-terminated is not displayed.
+type TestLog struct {
+	acc []byte
+	t *testing.T
+}
+
+func NewTestLog(t *testing.T) *TestLog {
+	return &TestLog{make([]byte, 0, 1024), t}
+}
+
+func (tl *TestLog) Write(p []byte) (n int, err error) {
+	tl.acc = append(tl.acc, p...)
+	s := 0
+	for i := 0; i < len(tl.acc); i++ {
+		if tl.acc[i] == 10 {
+			tl.t.Log(string(tl.acc[s:i]))
+			s = i + 1
+		}
+	}
+	if s == len(tl.acc) {
+		tl.acc = tl.acc[:] // try to preserve slice capacity
+	} else {
+		tl.acc = tl.acc[s:]
+	}
+	return len(p), nil
+}
+
+func SetupTestLogging(t *testing.T) {
+	Error = log.New(NewTestLog(t), "ERROR: ", log.Lshortfile)
+	Warn = log.New(NewTestLog(t), "WARNING: ", log.Lshortfile)
+	Info = log.New(NewTestLog(t), "INFO: ", log.Lshortfile)
+	Debug = log.New(NewTestLog(t), "DEBUG: ", log.Lshortfile)
 }
