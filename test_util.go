@@ -14,6 +14,7 @@ const (
 	WAIT_COUNT = 300
 	REC_EMPTY_WAIT_TIME_MS = 50
 	REC_SKIP_TIME_MS = 3000
+	REC_ITEM_TIMEOUT_MS = 5000
 )
 
 func WaitFor(t *testing.T, pred func() bool) {
@@ -49,9 +50,9 @@ func (rec *Recorder) VerifyEmpty() {
 	select {
 	case <- timer.C:
 		return
-	case log := <- rec.ch:
+	case logItem := <- rec.ch:
 		timer.Stop()
-		rec.t.Fatalf("unexpected logs: %s", log)
+		rec.t.Fatalf("unexpected logs: %s", logItem)
 	}
 }
 
@@ -60,8 +61,15 @@ func (rec *Recorder) Verify(logs... string) {
 		rec.VerifyEmpty()
 	} else {
 		actualLogs := make([]string, 0, len(logs))
-		for _ = range logs {
-			actualLogs = append(actualLogs, <-rec.ch)
+		for _, expectedItem := range logs {
+			timer := time.NewTimer(REC_ITEM_TIMEOUT_MS * time.Millisecond)
+			select {
+			case <- timer.C:
+				rec.t.Fatalf("timed out waiting for log item: %s", expectedItem)
+			case logItem := <-rec.ch:
+				timer.Stop()
+				actualLogs = append(actualLogs, logItem)
+			}
 		}
 		require.Equal(rec.t, logs, actualLogs, "rec logs")
 	}
@@ -81,15 +89,15 @@ func (rec *Recorder) VerifyUnordered(logs... string) {
 	}
 }
 
-func (rec *Recorder) SkipTill(log string) {
+func (rec *Recorder) SkipTill(logItem string) {
 	timer := time.NewTimer(REC_EMPTY_WAIT_TIME_MS * time.Millisecond)
 	for {
 		select {
 		case <- timer.C:
-			rec.t.Fatalf("failed waiting for log: %s", log)
+			rec.t.Fatalf("failed waiting for log: %s", logItem)
 			return
 		case l := <- rec.ch:
-			if l == log {
+			if l == logItem {
 				timer.Stop()
 				return
 			}
