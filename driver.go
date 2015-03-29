@@ -23,7 +23,7 @@ type MQTTMessage struct {
 type MQTTMessageHandler func(message MQTTMessage)
 
 type MQTTClient interface {
-	ReadyChannel() <-chan struct{}
+	WaitForReady() <-chan struct{}
 	Start()
 	Stop()
 	Publish(message MQTTMessage)
@@ -419,7 +419,7 @@ func (drv *Driver) Start() error {
 	}
 
 	go func () {
-		readyCh := drv.client.ReadyChannel() 
+		readyCh := drv.client.WaitForReady()
 		for {
 			select {
 			case <- readyCh:

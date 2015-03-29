@@ -136,7 +136,7 @@ func (client *FakeMQTTClient) receive(message MQTTMessage) {
 	}
 }
 
-func (client *FakeMQTTClient) ReadyChannel() <-chan struct{} {
+func (client *FakeMQTTClient) WaitForReady() <-chan struct{} {
 	return client.ready
 }
 
