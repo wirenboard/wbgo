@@ -132,7 +132,7 @@ func (tl *TestLog) Write(p []byte) (n int, err error) {
 		}
 	}
 	if s == len(tl.acc) {
-		tl.acc = tl.acc[:] // try to preserve slice capacity
+		tl.acc = tl.acc[:0] // try to preserve slice capacity
 	} else {
 		tl.acc = tl.acc[s:]
 	}
