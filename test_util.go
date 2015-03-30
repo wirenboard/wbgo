@@ -114,12 +114,14 @@ func (rec *Recorder) T() *testing.T {
 // shown when the test fails. Note that a part at the end
 // of output that is not newline-terminated is not displayed.
 type TestLog struct {
+	buf []byte
 	acc []byte
 	t *testing.T
 }
 
 func NewTestLog(t *testing.T) *TestLog {
-	return &TestLog{make([]byte, 0, 1024), t}
+	buf := make([]byte, 0, 1024)
+	return &TestLog{buf, buf[:0], t}
 }
 
 func (tl *TestLog) Write(p []byte) (n int, err error) {
@@ -132,7 +134,7 @@ func (tl *TestLog) Write(p []byte) (n int, err error) {
 		}
 	}
 	if s == len(tl.acc) {
-		tl.acc = tl.acc[:0] // try to preserve slice capacity
+		tl.acc = tl.buf[:0]
 	} else {
 		tl.acc = tl.acc[s:]
 	}
