@@ -1,12 +1,12 @@
 package wbgo
 
 import (
-	"testing"
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func doTestDriver(t *testing.T,
-	thunk func (driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel)) {
+	thunk func(driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel)) {
 	broker := NewFakeMQTTBroker(t)
 	model := NewFakeModel(t)
 
@@ -19,8 +19,8 @@ func doTestDriver(t *testing.T,
 }
 
 func TestDriver(t *testing.T) {
-	doTestDriver(t, func (driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel) {
-		dev := model.MakeLocalDevice("somedev", "SomeDev", map[string]string {
+	doTestDriver(t, func(driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel) {
+		dev := model.MakeLocalDevice("somedev", "SomeDev", map[string]string{
 			"paramOne": "switch",
 			"paramTwo": "switch",
 		})
@@ -52,7 +52,7 @@ func TestDriver(t *testing.T) {
 			"AcceptOnValue: somedev.paramOne = 1",
 		)
 
-		driver.CallSync(func () {
+		driver.CallSync(func() {
 			dev.ReceiveValue("paramTwo", "1")
 		})
 		broker.Verify(
@@ -68,7 +68,7 @@ func TestDriver(t *testing.T) {
 }
 
 func TestExternalDevices(t *testing.T) {
-	doTestDriver(t, func (driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel) {
+	doTestDriver(t, func(driver *Driver, broker *FakeMQTTBroker, client MQTTClient, model *FakeModel) {
 		driver.SetAcceptsExternalDevices(true)
 		driver.Start()
 		defer driver.Stop()
@@ -80,7 +80,7 @@ func TestExternalDevices(t *testing.T) {
 			"Subscribe -- driver: /devices/+/controls/+/meta/max",
 			"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		)
-		WaitFor(t, func () bool {
+		WaitFor(t, func() bool {
 			return model.HasDevice("somedev")
 		})
 		dev := model.GetDevice("somedev")

@@ -1,20 +1,20 @@
 package wbgo
 
 import (
-	"os"
 	"fmt"
-	"time"
-	"math/rand"
-	"strings"
 	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
+	"math/rand"
+	"os"
+	"strings"
+	"time"
 )
 
 const DISCONNECT_WAIT_MS = 100
 
 type PahoMQTTClient struct {
-	innerClient *MQTT.MqttClient
+	innerClient     *MQTT.MqttClient
 	waitForRetained bool
-	ready chan struct{}
+	ready           chan struct{}
 }
 
 func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *PahoMQTTClient) {
@@ -36,7 +36,7 @@ func (client *PahoMQTTClient) WaitForReady() <-chan struct{} {
 	if !client.waitForRetained {
 		close(client.ready)
 	} else {
-		go func () {
+		go func() {
 			// There's no guarantee that messages with different QoS don't get
 			// mixed up, thus we check QoS 1 and QoS 2 for retained messages here.
 			// According to the standard, our message will arrive after the
@@ -48,7 +48,7 @@ func (client *PahoMQTTClient) WaitForReady() <-chan struct{} {
 			got1, got2 := false, false
 			// subscribe synchronously to make sure that
 			// messages are published after the subscription is complete
-			client.doSubscribe(func (msg MQTTMessage) {
+			client.doSubscribe(func(msg MQTTMessage) {
 				switch {
 				case got1 && got2:
 					// avoid closing the channel twice upon QoS1
@@ -87,20 +87,20 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 	m := MQTT.NewMessage([]byte(message.Payload))
 	m.SetQoS(MQTT.QoS(message.QoS))
 	m.SetRetainedFlag(message.Retained)
-	go func () {
+	go func() {
 		if ch := client.innerClient.PublishMessage(message.Topic, m); ch != nil {
-			<- ch
+			<-ch
 		} else {
 			Error.Printf("PublishMessage() failed for topic: ", message.Topic) // FIXME
 		}
 	}()
 }
 
-func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics... string) {
+func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...string) {
 	go client.doSubscribe(callback, topics...)
 }
 
-func (client *PahoMQTTClient) doSubscribe(callback MQTTMessageHandler, topics... string) {
+func (client *PahoMQTTClient) doSubscribe(callback MQTTMessageHandler, topics ...string) {
 	filters := make([]*MQTT.TopicFilter, len(topics))
 	for i, topic := range topics {
 		if filter, err := MQTT.NewTopicFilter(topic, 2); err != nil {
@@ -125,8 +125,8 @@ func (client *PahoMQTTClient) doSubscribe(callback MQTTMessageHandler, topics...
 	}
 }
 
-func (client *PahoMQTTClient) Unsubscribe(topics... string) {
-	go func () {
+func (client *PahoMQTTClient) Unsubscribe(topics ...string) {
+	go func() {
 		if receipt, err := client.innerClient.EndSubscription(topics...); err != nil {
 			panic(err)
 		} else {

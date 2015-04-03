@@ -9,16 +9,16 @@ func TestFakeMQTT(t *testing.T) {
 
 	c1 := broker.MakeClient("c1")
 	c1.Start()
-	c1.Subscribe(func (message MQTTMessage) {
+	c1.Subscribe(func(message MQTTMessage) {
 		broker.Rec("message for c1: %s", FormatMQTTMessage(message))
 	}, "/some/topic")
 
 	c2 := broker.MakeClient("c2")
 	c2.Start()
-	c2.Subscribe(func (message MQTTMessage) {
+	c2.Subscribe(func(message MQTTMessage) {
 		broker.Rec("(some) message for c2: %s", FormatMQTTMessage(message))
 	}, "/some/topic")
-	c2.Subscribe(func (message MQTTMessage) {
+	c2.Subscribe(func(message MQTTMessage) {
 		broker.Rec("(another) message for c2: %s", FormatMQTTMessage(message))
 	}, "/another/topic")
 

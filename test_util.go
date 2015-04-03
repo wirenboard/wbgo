@@ -2,19 +2,19 @@ package wbgo
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"log"
 	"sort"
-	"time"
 	"testing"
-	"github.com/stretchr/testify/require"
+	"time"
 )
 
 const (
-	WAIT_INTERVAL_MS = 10
-	WAIT_COUNT = 300
+	WAIT_INTERVAL_MS       = 10
+	WAIT_COUNT             = 300
 	REC_EMPTY_WAIT_TIME_MS = 50
-	REC_SKIP_TIME_MS = 3000
-	REC_ITEM_TIMEOUT_MS = 5000
+	REC_SKIP_TIME_MS       = 3000
+	REC_ITEM_TIMEOUT_MS    = 5000
 )
 
 func WaitFor(t *testing.T, pred func() bool) {
@@ -28,7 +28,7 @@ func WaitFor(t *testing.T, pred func() bool) {
 }
 
 type Recorder struct {
-	t *testing.T
+	t  *testing.T
 	ch chan string
 }
 
@@ -37,7 +37,7 @@ func (rec *Recorder) InitRecorder(t *testing.T) {
 	rec.ch = make(chan string, 1000)
 }
 
-func (rec *Recorder) Rec(format string, args... interface{}) {
+func (rec *Recorder) Rec(format string, args ...interface{}) {
 	item := fmt.Sprintf(format, args...)
 	rec.t.Log("REC: ", item)
 	rec.ch <- item
@@ -48,15 +48,15 @@ func (rec *Recorder) VerifyEmpty() {
 	// errors at least in some cases
 	timer := time.NewTimer(REC_EMPTY_WAIT_TIME_MS * time.Millisecond)
 	select {
-	case <- timer.C:
+	case <-timer.C:
 		return
-	case logItem := <- rec.ch:
+	case logItem := <-rec.ch:
 		timer.Stop()
 		rec.t.Fatalf("unexpected logs: %s", logItem)
 	}
 }
 
-func (rec *Recorder) Verify(logs... string) {
+func (rec *Recorder) Verify(logs ...string) {
 	if logs == nil {
 		rec.VerifyEmpty()
 	} else {
@@ -64,7 +64,7 @@ func (rec *Recorder) Verify(logs... string) {
 		for _, expectedItem := range logs {
 			timer := time.NewTimer(REC_ITEM_TIMEOUT_MS * time.Millisecond)
 			select {
-			case <- timer.C:
+			case <-timer.C:
 				rec.t.Fatalf("timed out waiting for log item: %s", expectedItem)
 			case logItem := <-rec.ch:
 				timer.Stop()
@@ -75,7 +75,7 @@ func (rec *Recorder) Verify(logs... string) {
 	}
 }
 
-func (rec *Recorder) VerifyUnordered(logs... string) {
+func (rec *Recorder) VerifyUnordered(logs ...string) {
 	if logs == nil {
 		rec.VerifyEmpty()
 	} else {
@@ -93,10 +93,10 @@ func (rec *Recorder) SkipTill(logItem string) {
 	timer := time.NewTimer(REC_EMPTY_WAIT_TIME_MS * time.Millisecond)
 	for {
 		select {
-		case <- timer.C:
+		case <-timer.C:
 			rec.t.Fatalf("failed waiting for log: %s", logItem)
 			return
-		case l := <- rec.ch:
+		case l := <-rec.ch:
 			if l == logItem {
 				timer.Stop()
 				return
@@ -116,7 +116,7 @@ func (rec *Recorder) T() *testing.T {
 type TestLog struct {
 	buf []byte
 	acc []byte
-	t *testing.T
+	t   *testing.T
 }
 
 func NewTestLog(t *testing.T) *TestLog {
