@@ -3,20 +3,20 @@ package wbgo
 
 import (
 	"fmt"
-	"time"
-	"strings"
 	"strconv"
+	"strings"
+	"time"
 )
 
 const (
-	EVENT_QUEUE_LEN = 100
+	EVENT_QUEUE_LEN          = 100
 	DEFAULT_POLL_INTERVAL_MS = 5000
 )
 
 type MQTTMessage struct {
-	Topic string
-	Payload string
-	QoS byte
+	Topic    string
+	Payload  string
+	QoS      byte
 	Retained bool
 }
 
@@ -27,8 +27,8 @@ type MQTTClient interface {
 	Start()
 	Stop()
 	Publish(message MQTTMessage)
-	Subscribe(callback MQTTMessageHandler, topics... string)
-	Unsubscribe(topics... string)
+	Subscribe(callback MQTTMessageHandler, topics ...string)
+	Unsubscribe(topics ...string)
 }
 
 type Model interface {
@@ -95,7 +95,7 @@ func (model *ModelBase) Poll() {}
 func (model *ModelBase) Stop() {}
 
 type DeviceBase struct {
-	DevName string
+	DevName  string
 	DevTitle string
 	Observer DeviceObserver
 }
@@ -118,35 +118,35 @@ func (dev *DeviceBase) Observe(observer DeviceObserver) {
 
 // Driver transfers data between Model with MQTTClient
 type Driver struct {
-	model Model
-	client MQTTClient
-	eventCh chan func()
-	quit chan struct{}
-	poll chan time.Time
-	deviceMap map[string]DeviceModel
-	nextOrder map[string]int
-	autoPoll bool
-	pollIntervalMs int
+	model                  Model
+	client                 MQTTClient
+	eventCh                chan func()
+	quit                   chan struct{}
+	poll                   chan time.Time
+	deviceMap              map[string]DeviceModel
+	nextOrder              map[string]int
+	autoPoll               bool
+	pollIntervalMs         int
 	acceptsExternalDevices bool
-	active bool
-	ready bool
-	whenReady *DeferredList
+	active                 bool
+	ready                  bool
+	whenReady              *DeferredList
 }
 
 func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 	drv = &Driver{
-		model: model,
+		model:  model,
 		client: client,
 		// Actually EVENT_QUEUE_LEN > 0 is only needed
 		// to avoid deadlocks in tests in a case when
 		// model change causes MQTT message to be generated
 		// that is passed back to the model
-		eventCh: make(chan func(), EVENT_QUEUE_LEN),
-		quit: make(chan struct{}),
-		poll: make(chan time.Time),
-		nextOrder: make(map[string]int),
-		deviceMap: make(map[string]DeviceModel),
-		autoPoll: true,
+		eventCh:        make(chan func(), EVENT_QUEUE_LEN),
+		quit:           make(chan struct{}),
+		poll:           make(chan time.Time),
+		nextOrder:      make(map[string]int),
+		deviceMap:      make(map[string]DeviceModel),
+		autoPoll:       true,
 		pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
 	}
 	drv.whenReady = NewDeferredList(drv.CallSync)
@@ -217,14 +217,14 @@ func (drv *Driver) OnNewDevice(dev DeviceModel) {
 // wrapMessageHandler wraps the message function so that it's run in
 // the driver's primary goroutine
 func (drv *Driver) wrapMessageHandler(handler MQTTMessageHandler) MQTTMessageHandler {
-	return func (msg MQTTMessage) {
-		drv.CallSync(func () {
+	return func(msg MQTTMessage) {
+		drv.CallSync(func() {
 			handler(msg)
 		})
 	}
 }
 
-func (drv *Driver) subscribe(handler MQTTMessageHandler, topics... string) {
+func (drv *Driver) subscribe(handler MQTTMessageHandler, topics ...string) {
 	drv.client.Subscribe(drv.wrapMessageHandler(handler), topics...)
 }
 
@@ -421,15 +421,15 @@ func (drv *Driver) Start() error {
 		drv.subscribe(drv.handleExternalControlMax, "/devices/+/controls/+/meta/max")
 	}
 
-	go func () {
+	go func() {
 		readyCh := drv.client.WaitForReady()
 		for {
 			select {
-			case <- readyCh:
+			case <-readyCh:
 				drv.whenReady.Ready()
 				readyCh = nil
 				drv.ready = true
-			case <- drv.quit:
+			case <-drv.quit:
 				Debug.Printf("Driver: stopping")
 				if ticker != nil {
 					ticker.Stop()
@@ -437,9 +437,9 @@ func (drv *Driver) Start() error {
 				drv.model.Stop()
 				drv.client.Stop()
 				return
-			case <- pollChannel:
+			case <-pollChannel:
 				drv.model.Poll()
-			case f := <- drv.eventCh:
+			case f := <-drv.eventCh:
 				f()
 			}
 		}

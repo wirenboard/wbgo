@@ -38,12 +38,12 @@ type SubscriptionMap map[string]SubscriptionList
 
 type FakeMQTTBroker struct {
 	Recorder
-	subscriptions SubscriptionMap
+	subscriptions   SubscriptionMap
 	waitForRetained bool
-	readyChannels []chan struct{}
+	readyChannels   []chan struct{}
 }
 
-func NewFakeMQTTBroker (t *testing.T) (broker *FakeMQTTBroker) {
+func NewFakeMQTTBroker(t *testing.T) (broker *FakeMQTTBroker) {
 	broker = &FakeMQTTBroker{subscriptions: make(SubscriptionMap)}
 	broker.InitRecorder(t)
 	return
@@ -75,8 +75,8 @@ func (broker *FakeMQTTBroker) Publish(origin string, message MQTTMessage) {
 func (broker *FakeMQTTBroker) Subscribe(client *FakeMQTTClient, topic string) {
 	broker.Rec("Subscribe -- %s: %s", client.id, topic)
 	subs, found := broker.subscriptions[topic]
-	if (!found) {
-		broker.subscriptions[topic] = SubscriptionList{ client }
+	if !found {
+		broker.subscriptions[topic] = SubscriptionList{client}
 	} else {
 		for _, c := range subs {
 			if c == client {
@@ -90,7 +90,7 @@ func (broker *FakeMQTTBroker) Subscribe(client *FakeMQTTClient, topic string) {
 func (broker *FakeMQTTBroker) Unsubscribe(client *FakeMQTTClient, topic string) {
 	broker.Rec("Unsubscribe -- %s: %s", client.id, topic)
 	subs, found := broker.subscriptions[topic]
-	if (!found) {
+	if !found {
 		return
 	} else {
 		newSubs := make(SubscriptionList, 0, len(subs))
@@ -118,11 +118,11 @@ func (broker *FakeMQTTBroker) MakeClient(id string) (client *FakeMQTTClient) {
 }
 
 type FakeMQTTClient struct {
-	id string
-	started bool
-	broker *FakeMQTTBroker
+	id          string
+	started     bool
+	broker      *FakeMQTTBroker
 	callbackMap map[string][]MQTTMessageHandler
-	ready chan struct{}
+	ready       chan struct{}
 }
 
 func (client *FakeMQTTClient) receive(message MQTTMessage) {
@@ -141,7 +141,7 @@ func (client *FakeMQTTClient) WaitForReady() <-chan struct{} {
 }
 
 func (client *FakeMQTTClient) Start() {
-	if (client.started) {
+	if client.started {
 		client.broker.T().Fatalf("%s: client already started", client.id)
 	}
 	client.started = true
@@ -157,7 +157,7 @@ func (client *FakeMQTTClient) Stop() {
 }
 
 func (client *FakeMQTTClient) ensureStarted() {
-	if (!client.started) {
+	if !client.started {
 		client.broker.T().Fatalf("%s: client not started", client.id)
 	}
 }
@@ -167,7 +167,7 @@ func (client *FakeMQTTClient) Publish(message MQTTMessage) {
 	client.broker.Publish(client.id, message)
 }
 
-func (client *FakeMQTTClient) Subscribe(callback MQTTMessageHandler, topics... string) {
+func (client *FakeMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...string) {
 	client.ensureStarted()
 	for _, topic := range topics {
 		client.broker.Subscribe(client, topic)
@@ -180,7 +180,7 @@ func (client *FakeMQTTClient) Subscribe(callback MQTTMessageHandler, topics... s
 	}
 }
 
-func (client *FakeMQTTClient) Unsubscribe(topics... string) {
+func (client *FakeMQTTClient) Unsubscribe(topics ...string) {
 	client.ensureStarted()
 	for _, topic := range topics {
 		client.broker.Unsubscribe(client, topic)

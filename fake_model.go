@@ -20,8 +20,8 @@ type FakeDev interface {
 
 type FakeDevice struct {
 	DeviceBase
-	model *FakeModel
-	paramTypes map[string]string
+	model       *FakeModel
+	paramTypes  map[string]string
 	paramValues map[string]string
 }
 
@@ -39,7 +39,7 @@ func NewFakeModel(t *testing.T) (model *FakeModel) {
 	return
 }
 
-func (model *FakeModel) Poll () {
+func (model *FakeModel) Poll() {
 	model.Rec("poll")
 }
 
@@ -59,8 +59,8 @@ func (model *FakeModel) Start() error {
 
 func newFakeDevice(model *FakeModel, name string, title string) (dev *FakeDevice) {
 	dev = &FakeDevice{
-		model: model,
-		paramTypes: make(map[string]string),
+		model:       model,
+		paramTypes:  make(map[string]string),
 		paramValues: make(map[string]string),
 	}
 	dev.DevName = name
@@ -144,11 +144,9 @@ func (dev *FakeDevice) GetValue(name string) string {
 	return dev.paramValues[name]
 }
 
-
 func (dev *FakeDevice) GetType(name string) string {
 	return dev.paramTypes[name]
 }
-
 
 func (dev *FakeLocalDevice) AcceptOnValue(name, value string) bool {
 	if _, found := dev.paramTypes[name]; !found {
