@@ -235,7 +235,7 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 		nextOrder = 1
 	}
 	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "type"), paramType)
-	if readOnly == true {
+	if readOnly {
 		drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "readonly"), "1")
 	}
 	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "order"),
