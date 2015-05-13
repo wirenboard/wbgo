@@ -78,7 +78,8 @@ type ModelObserver interface {
 }
 
 type DeviceObserver interface {
-	OnNewControl(dev DeviceModel, name, paramType, value string, readOnly bool, max float64)
+	OnNewControl(dev DeviceModel, name, paramType, value string, readOnly bool, max float64,
+		retain bool)
 	OnValue(dev DeviceModel, name, value string)
 }
 
@@ -116,6 +117,11 @@ func (dev *DeviceBase) Observe(observer DeviceObserver) {
 	dev.Observer = observer
 }
 
+type controlKey struct {
+	devName     string
+	controlName string
+}
+
 // Driver transfers data between Model with MQTTClient
 type Driver struct {
 	model                  Model
@@ -125,6 +131,7 @@ type Driver struct {
 	poll                   chan time.Time
 	deviceMap              map[string]DeviceModel
 	nextOrder              map[string]int
+	retainMap              map[string]bool
 	autoPoll               bool
 	pollIntervalMs         int
 	acceptsExternalDevices bool
@@ -144,8 +151,9 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		eventCh:        make(chan func(), EVENT_QUEUE_LEN),
 		quit:           make(chan struct{}),
 		poll:           make(chan time.Time),
-		nextOrder:      make(map[string]int),
 		deviceMap:      make(map[string]DeviceModel),
+		nextOrder:      make(map[string]int),
+		retainMap:      make(map[string]bool),
 		autoPoll:       true,
 		pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
 	}
@@ -184,16 +192,18 @@ func (drv *Driver) controlTopic(dev DeviceModel, controlName string, sub ...stri
 	return drv.topic(dev, parts...)
 }
 
-func (drv *Driver) publish(topic, payload string, qos byte) {
-	drv.client.Publish(MQTTMessage{topic, payload, qos, true})
+func (drv *Driver) publish(topic, payload string, qos byte, retain bool) {
+	drv.client.Publish(MQTTMessage{topic, payload, qos, retain})
 }
 
 func (drv *Driver) publishMeta(topic string, payload string) {
-	drv.publish(topic, payload, 1)
+	drv.publish(topic, payload, 1, true)
 }
 
 func (drv *Driver) publishValue(dev DeviceModel, controlName, value string) {
-	drv.publish(drv.controlTopic(dev, controlName), value, 1)
+	topic := drv.controlTopic(dev, controlName)
+	retain, found := drv.retainMap[topic]
+	drv.publish(topic, value, 1, found && retain)
 }
 
 func (drv *Driver) publishOnValue(dev DeviceModel, controlName, value string) {
@@ -228,7 +238,7 @@ func (drv *Driver) subscribe(handler MQTTMessageHandler, topics ...string) {
 	drv.client.Subscribe(drv.wrapMessageHandler(handler), topics...)
 }
 
-func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value string, readOnly bool, max float64) {
+func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value string, readOnly bool, max float64, retain bool) {
 	devName := dev.Name()
 	nextOrder, found := drv.nextOrder[devName]
 	if !found {
@@ -245,7 +255,11 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 			fmt.Sprintf("%v", max))
 	}
 	drv.nextOrder[devName] = nextOrder + 1
-	drv.publishValue(dev, controlName, value)
+	drv.retainMap[drv.controlTopic(dev, controlName)] = retain
+	if retain {
+		// non-retained controls are used for buttons
+		drv.publishValue(dev, controlName, value)
+	}
 	if !readOnly {
 		Debug.Println("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
 		drv.subscribe(

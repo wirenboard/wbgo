@@ -126,7 +126,8 @@ func (dev *FakeDevice) QueryParams() {
 	sort.Strings(keys)
 	for _, k := range keys {
 		paramType := dev.paramTypes[k]
-		dev.Observer.OnNewControl(dev, k, paramType, dev.paramValues[k], false, -1)
+		dev.Observer.OnNewControl(dev, k, paramType, dev.paramValues[k], false, -1,
+			paramType != "pushbutton")
 	}
 }
 
