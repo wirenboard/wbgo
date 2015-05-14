@@ -3,7 +3,9 @@ package wbgo
 import (
 	"fmt"
 	"github.com/stretchr/testify/require"
+	"io/ioutil"
 	"log"
+	"os"
 	"sort"
 	"testing"
 	"time"
@@ -146,4 +148,26 @@ func SetupTestLogging(t *testing.T) {
 	Warn = log.New(NewTestLog(t), "WARNING: ", log.Lshortfile)
 	Info = log.New(NewTestLog(t), "INFO: ", log.Lshortfile)
 	Debug = log.New(NewTestLog(t), "DEBUG: ", log.Lshortfile)
+}
+
+// SetupTempDir sets up a temporary directory to be used in tests.
+// In case of an error, makes the test fail.
+func SetupTempDir(t *testing.T) (string, func()) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("couldn't get the current directory")
+		return "", nil // never reached
+	}
+
+	dir, err := ioutil.TempDir(os.TempDir(), "ruletest")
+	if err != nil {
+		t.Fatalf("couldn't create temporary directory")
+		return "", nil // never reached
+	}
+
+	os.Chdir(dir)
+	return dir, func() {
+		os.RemoveAll(dir)
+		os.Chdir(wd)
+	}
 }
