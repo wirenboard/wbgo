@@ -19,6 +19,8 @@ const (
 	REC_ITEM_TIMEOUT_MS    = 5000
 )
 
+// WaitFor waits for the function specified by pred to return true.
+// The test fails if it takes too long.
 func WaitFor(t *testing.T, pred func() bool) {
 	for n := 0; n < WAIT_COUNT; n++ {
 		if pred() {
@@ -143,6 +145,8 @@ func (tl *TestLog) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+// SetupTestLogging sets up the logging output in such way
+// that it's only shown if the current test fails.
 func SetupTestLogging(t *testing.T) {
 	Error = log.New(NewTestLog(t), "ERROR: ", log.Lshortfile)
 	Warn = log.New(NewTestLog(t), "WARNING: ", log.Lshortfile)
@@ -150,8 +154,11 @@ func SetupTestLogging(t *testing.T) {
 	Debug = log.New(NewTestLog(t), "DEBUG: ", log.Lshortfile)
 }
 
-// SetupTempDir sets up a temporary directory to be used in tests.
-// In case of an error, makes the test fail.
+// SetupTempDir creates a temporary directory to be used in tests and
+// makes it the current directory. In case of an error, makes the test
+// fail. Returns the path to the temporary directory and cleanup
+// function that removes the directory and changes back to the directory
+// that was current before SetupTempDir was called.
 func SetupTempDir(t *testing.T) (string, func()) {
 	wd, err := os.Getwd()
 	if err != nil {
