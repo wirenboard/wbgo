@@ -3,6 +3,7 @@ package wbgo
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -38,6 +39,7 @@ type SubscriptionMap map[string]SubscriptionList
 
 type FakeMQTTBroker struct {
 	Recorder
+	sync.Mutex
 	subscriptions   SubscriptionMap
 	waitForRetained bool
 	readyChannels   []chan struct{}
@@ -61,6 +63,8 @@ func (broker *FakeMQTTBroker) SetReady() {
 }
 
 func (broker *FakeMQTTBroker) Publish(origin string, message MQTTMessage) {
+	broker.Lock()
+	defer broker.Unlock()
 	broker.Rec("%s -> %s: %s", origin, message.Topic, FormatMQTTMessage(message))
 	for pattern, subs := range broker.subscriptions {
 		if !topicMatch(pattern, message.Topic) {
@@ -73,6 +77,8 @@ func (broker *FakeMQTTBroker) Publish(origin string, message MQTTMessage) {
 }
 
 func (broker *FakeMQTTBroker) Subscribe(client *FakeMQTTClient, topic string) {
+	broker.Lock()
+	defer broker.Unlock()
 	broker.Rec("Subscribe -- %s: %s", client.id, topic)
 	subs, found := broker.subscriptions[topic]
 	if !found {
@@ -88,6 +94,8 @@ func (broker *FakeMQTTBroker) Subscribe(client *FakeMQTTClient, topic string) {
 }
 
 func (broker *FakeMQTTBroker) Unsubscribe(client *FakeMQTTClient, topic string) {
+	broker.Lock()
+	defer broker.Unlock()
 	broker.Rec("Unsubscribe -- %s: %s", client.id, topic)
 	subs, found := broker.subscriptions[topic]
 	if !found {
@@ -105,11 +113,11 @@ func (broker *FakeMQTTBroker) Unsubscribe(client *FakeMQTTClient, topic string) 
 
 func (broker *FakeMQTTBroker) MakeClient(id string) (client *FakeMQTTClient) {
 	client = &FakeMQTTClient{
-		id,
-		false,
-		broker,
-		make(map[string][]MQTTMessageHandler),
-		make(chan struct{}),
+		id:          id,
+		started:     false,
+		broker:      broker,
+		callbackMap: make(map[string][]MQTTMessageHandler),
+		ready:       make(chan struct{}),
 	}
 	if broker.waitForRetained {
 		broker.readyChannels = append(broker.readyChannels, client.ready)
@@ -118,6 +126,7 @@ func (broker *FakeMQTTBroker) MakeClient(id string) (client *FakeMQTTClient) {
 }
 
 type FakeMQTTClient struct {
+	sync.Mutex
 	id          string
 	started     bool
 	broker      *FakeMQTTBroker
@@ -126,6 +135,8 @@ type FakeMQTTClient struct {
 }
 
 func (client *FakeMQTTClient) receive(message MQTTMessage) {
+	client.Lock()
+	defer client.Unlock()
 	for topic, handlers := range client.callbackMap {
 		if !topicMatch(topic, message.Topic) {
 			continue
@@ -168,6 +179,8 @@ func (client *FakeMQTTClient) Publish(message MQTTMessage) {
 }
 
 func (client *FakeMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...string) {
+	client.Lock()
+	defer client.Unlock()
 	client.ensureStarted()
 	for _, topic := range topics {
 		client.broker.Subscribe(client, topic)
@@ -181,6 +194,8 @@ func (client *FakeMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...s
 }
 
 func (client *FakeMQTTClient) Unsubscribe(topics ...string) {
+	client.Lock()
+	defer client.Unlock()
 	client.ensureStarted()
 	for _, topic := range topics {
 		client.broker.Unsubscribe(client, topic)

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 )
@@ -129,6 +130,7 @@ func (rec *Recorder) T() *testing.T {
 // shown when the test fails. Note that a part at the end
 // of output that is not newline-terminated is not displayed.
 type TestLog struct {
+	sync.Mutex
 	buf      []byte
 	acc      []byte
 	t        *testing.T
@@ -137,10 +139,12 @@ type TestLog struct {
 
 func NewTestLog(t *testing.T) *TestLog {
 	buf := make([]byte, 0, 1024)
-	return &TestLog{buf, buf[:0], t, true}
+	return &TestLog{buf: buf, acc: buf[:0], t: t, pristine: true}
 }
 
 func (tl *TestLog) Write(p []byte) (n int, err error) {
+	tl.Lock()
+	defer tl.Unlock()
 	tl.pristine = false
 	tl.acc = append(tl.acc, p...)
 	s := 0
@@ -158,6 +162,23 @@ func (tl *TestLog) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (tl *TestLog) VerifyPristine(msg string) {
+	tl.Lock()
+	defer tl.Unlock()
+	if !tl.pristine {
+		tl.t.Fatal(msg)
+	}
+}
+
+func (tl *TestLog) VerifyUsed(msg string) {
+	tl.Lock()
+	defer tl.Unlock()
+	if tl.pristine {
+		tl.t.Fatal(msg)
+	}
+	tl.pristine = true
+}
+
 var errorTestLog, warnTestLog *TestLog
 
 // SetupTestLogging sets up the logging output in such way
@@ -172,26 +193,16 @@ func SetupTestLogging(t *testing.T) {
 }
 
 func EnsureNoErrorsOrWarnings(t *testing.T) {
-	if !errorTestLog.pristine {
-		t.Fatalf("Errors detected")
-	}
-	if !warnTestLog.pristine {
-		t.Fatalf("Warnings detected")
-	}
+	errorTestLog.VerifyPristine("Errors detected")
+	warnTestLog.VerifyPristine("Warnings detected")
 }
 
 func EnsureGotErrors(t *testing.T) {
-	if errorTestLog.pristine {
-		t.Fatalf("No errors detected (but should be)")
-	}
-	errorTestLog.pristine = true
+	errorTestLog.VerifyUsed("No errors detected (but should be)")
 }
 
 func EnsureGotWarnings(t *testing.T) {
-	if warnTestLog.pristine {
-		t.Fatalf("No warnings detected (but should be)")
-	}
-	warnTestLog.pristine = true
+	warnTestLog.VerifyUsed("No warnings detected (but should be)")
 }
 
 // SetupTempDir creates a temporary directory to be used in tests and
