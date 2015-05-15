@@ -129,17 +129,19 @@ func (rec *Recorder) T() *testing.T {
 // shown when the test fails. Note that a part at the end
 // of output that is not newline-terminated is not displayed.
 type TestLog struct {
-	buf []byte
-	acc []byte
-	t   *testing.T
+	buf      []byte
+	acc      []byte
+	t        *testing.T
+	pristine bool
 }
 
 func NewTestLog(t *testing.T) *TestLog {
 	buf := make([]byte, 0, 1024)
-	return &TestLog{buf, buf[:0], t}
+	return &TestLog{buf, buf[:0], t, true}
 }
 
 func (tl *TestLog) Write(p []byte) (n int, err error) {
+	tl.pristine = false
 	tl.acc = append(tl.acc, p...)
 	s := 0
 	for i := 0; i < len(tl.acc); i++ {
@@ -156,13 +158,26 @@ func (tl *TestLog) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+var errorTestLog, warnTestLog *TestLog
+
 // SetupTestLogging sets up the logging output in such way
 // that it's only shown if the current test fails.
 func SetupTestLogging(t *testing.T) {
-	Error = log.New(NewTestLog(t), "ERROR: ", log.Lshortfile)
-	Warn = log.New(NewTestLog(t), "WARNING: ", log.Lshortfile)
+	errorTestLog = NewTestLog(t)
+	Error = log.New(errorTestLog, "ERROR: ", log.Lshortfile)
+	warnTestLog = NewTestLog(t)
+	Warn = log.New(warnTestLog, "WARNING: ", log.Lshortfile)
 	Info = log.New(NewTestLog(t), "INFO: ", log.Lshortfile)
 	Debug = log.New(NewTestLog(t), "DEBUG: ", log.Lshortfile)
+}
+
+func EnsureNoErrorsOrWarnings(t *testing.T) {
+	if !errorTestLog.pristine {
+		t.Fatalf("Errors detected")
+	}
+	if !warnTestLog.pristine {
+		t.Fatalf("Warnings detected")
+	}
 }
 
 // SetupTempDir creates a temporary directory to be used in tests and
