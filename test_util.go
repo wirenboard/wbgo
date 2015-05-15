@@ -180,6 +180,20 @@ func EnsureNoErrorsOrWarnings(t *testing.T) {
 	}
 }
 
+func EnsureGotErrors(t *testing.T) {
+	if errorTestLog.pristine {
+		t.Fatalf("No errors detected (but should be)")
+	}
+	errorTestLog.pristine = true
+}
+
+func EnsureGotWarnings(t *testing.T) {
+	if warnTestLog.pristine {
+		t.Fatalf("No warnings detected (but should be)")
+	}
+	warnTestLog.pristine = true
+}
+
 // SetupTempDir creates a temporary directory to be used in tests and
 // makes it the current directory. In case of an error, makes the test
 // fail. Returns the path to the temporary directory and cleanup
