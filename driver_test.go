@@ -81,7 +81,11 @@ func TestExternalDevices(t *testing.T) {
 			"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		)
 		WaitFor(t, func() bool {
-			return model.HasDevice("somedev")
+			c := make(chan bool)
+			driver.CallSync(func() {
+				c <- model.HasDevice("somedev")
+			})
+			return <-c
 		})
 		dev := model.GetDevice("somedev")
 		assert.NotEqual(t, nil, dev)
