@@ -32,8 +32,15 @@ func WaitFor(t *testing.T, pred func() bool) {
 }
 
 type Recorder struct {
-	t  *testing.T
-	ch chan string
+	t             *testing.T
+	ch            chan string
+	emptyWaitTime time.Duration
+}
+
+func NewRecorder(t *testing.T) *Recorder {
+	rec := &Recorder{emptyWaitTime: REC_EMPTY_WAIT_TIME_MS * time.Millisecond}
+	rec.InitRecorder(t)
+	return rec
 }
 
 func (rec *Recorder) InitRecorder(t *testing.T) {
@@ -47,10 +54,14 @@ func (rec *Recorder) Rec(format string, args ...interface{}) {
 	rec.ch <- item
 }
 
+func (rec *Recorder) SetEmptyWaitTime(duration time.Duration) {
+	rec.emptyWaitTime = duration
+}
+
 func (rec *Recorder) VerifyEmpty() {
 	// this may not always work but will help catch
 	// errors at least in some cases
-	timer := time.NewTimer(REC_EMPTY_WAIT_TIME_MS * time.Millisecond)
+	timer := time.NewTimer(rec.emptyWaitTime)
 	select {
 	case <-timer.C:
 		return
