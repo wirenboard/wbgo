@@ -202,8 +202,8 @@ func (drv *Driver) publishMeta(topic string, payload string) {
 
 func (drv *Driver) publishValue(dev DeviceModel, controlName, value string) {
 	topic := drv.controlTopic(dev, controlName)
-	retain, found := drv.retainMap[topic]
-	drv.publish(topic, value, 1, found && retain)
+	retain := drv.retainMap[topic]
+	drv.publish(topic, value, 1, retain)
 }
 
 func (drv *Driver) publishOnValue(dev DeviceModel, controlName, value string) {
