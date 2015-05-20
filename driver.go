@@ -301,12 +301,10 @@ func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, erro
 		return nil, err
 	}
 
-	extDev, ok := dev.(ExternalDeviceModel)
-	if ok {
+	if extDev, ok := dev.(ExternalDeviceModel); ok {
 		return extDev, nil
-	} else {
-		return nil, nil
 	}
+	return nil, nil
 }
 
 func (drv *Driver) handleIncomingControlOnValue(msg MQTTMessage) {
