@@ -11,6 +11,7 @@ import (
 const (
 	EVENT_QUEUE_LEN          = 100
 	DEFAULT_POLL_INTERVAL_MS = 5000
+	CONTROL_LIST_CAPACITY    = 32
 )
 
 type MQTTMessage struct {
@@ -60,6 +61,7 @@ type LocalDeviceModel interface {
 	// for the target device and returns true if the value should be automatically
 	// echoed back
 	AcceptOnValue(name, value string) bool
+	IsVirtual() bool
 }
 
 type ExternalDeviceModel interface {
@@ -74,11 +76,12 @@ type ExternalDeviceModel interface {
 type ModelObserver interface {
 	CallSync(thunk func())
 	WhenReady(thunk func())
+	RemoveDevice(dev DeviceModel)
 	OnNewDevice(dev DeviceModel)
 }
 
 type DeviceObserver interface {
-	OnNewControl(dev DeviceModel, name, paramType, value string, readOnly bool, max float64,
+	OnNewControl(dev LocalDeviceModel, name, paramType, value string, readOnly bool, max float64,
 		retain bool)
 	OnValue(dev DeviceModel, name, value string)
 }
@@ -129,9 +132,11 @@ type Driver struct {
 	eventCh                chan func()
 	quit                   chan struct{}
 	poll                   chan time.Time
-	deviceMap              map[string]DeviceModel
+	deviceMap              map[string]DeviceModel // TBD: wrap DeviceModel instead of using parallel structures
 	nextOrder              map[string]int
+	controlList            map[string][]string
 	retainMap              map[string]bool
+	receivedValues         map[string]string
 	autoPoll               bool
 	pollIntervalMs         int
 	acceptsExternalDevices bool
@@ -154,6 +159,8 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		deviceMap:      make(map[string]DeviceModel),
 		nextOrder:      make(map[string]int),
 		retainMap:      make(map[string]bool),
+		controlList:    make(map[string][]string),
+		receivedValues: make(map[string]string),
 		autoPoll:       true,
 		pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
 	}
@@ -215,11 +222,34 @@ func (drv *Driver) publishOnValue(dev DeviceModel, controlName, value string) {
 	})
 }
 
+func (drv *Driver) RemoveDevice(dev DeviceModel) {
+	name := dev.Name()
+	dev, found := drv.deviceMap[name]
+	if !found {
+		return
+	}
+	_, ok := dev.(LocalDeviceModel)
+	if ok {
+		for _, controlName := range drv.controlList[name] {
+			drv.client.Unsubscribe(drv.controlTopic(dev, controlName, "on"))
+		}
+	}
+	delete(drv.deviceMap, name)
+	delete(drv.nextOrder, name)
+	delete(drv.controlList, name)
+}
+
 func (drv *Driver) OnNewDevice(dev DeviceModel) {
-	// this overrides a possibly created external device with same name
+	drv.RemoveDevice(dev)
 	drv.deviceMap[dev.Name()] = dev
 	if _, ext := dev.(ExternalDeviceModel); !ext {
+		Debug.Printf("driver: new local device: %s", dev.Name())
+		// this overrides a possibly created external device with same name
+		drv.nextOrder[dev.Name()] = 1
+		drv.controlList[dev.Name()] = make([]string, 0, CONTROL_LIST_CAPACITY)
 		drv.publishMeta(drv.topic(dev, "meta", "name"), dev.Title())
+	} else {
+		Debug.Printf("driver: new remote device: %s", dev.Name())
 	}
 	dev.Observe(drv)
 }
@@ -238,12 +268,17 @@ func (drv *Driver) subscribe(handler MQTTMessageHandler, topics ...string) {
 	drv.client.Subscribe(drv.wrapMessageHandler(handler), topics...)
 }
 
-func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value string, readOnly bool, max float64, retain bool) {
-	devName := dev.Name()
-	nextOrder, found := drv.nextOrder[devName]
-	if !found {
-		nextOrder = 1
+func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, value string, readOnly bool, max float64, retain bool) {
+	controlTopic := drv.controlTopic(dev, controlName)
+	if drv.active && dev.IsVirtual() && retain {
+		// keep value in the case of new virtual device definition in the running driver
+		oldValue, found := drv.receivedValues[controlTopic]
+		if found {
+			value = oldValue
+		}
 	}
+	devName := dev.Name()
+	nextOrder := drv.nextOrder[devName]
 	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "type"), paramType)
 	if readOnly {
 		drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "readonly"), "1")
@@ -255,7 +290,7 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 			fmt.Sprintf("%v", max))
 	}
 	drv.nextOrder[devName] = nextOrder + 1
-	drv.retainMap[drv.controlTopic(dev, controlName)] = retain
+	drv.retainMap[controlTopic] = retain
 	if retain {
 		// non-retained controls are used for buttons
 		drv.publishValue(dev, controlName, value)
@@ -266,6 +301,7 @@ func (drv *Driver) OnNewControl(dev DeviceModel, controlName, paramType, value s
 			drv.handleIncomingControlOnValue,
 			drv.controlTopic(dev, controlName, "on"))
 	}
+	drv.controlList[devName] = append(drv.controlList[devName], controlName)
 }
 
 func (drv *Driver) OnValue(dev DeviceModel, controlName, value string) {
@@ -337,6 +373,7 @@ func (drv *Driver) handleDeviceTitle(msg MQTTMessage) {
 
 func (drv *Driver) handleIncomingControlValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>
+	drv.receivedValues[msg.Topic] = msg.Payload
 	parts := strings.Split(msg.Topic, "/")
 	deviceName := parts[2]
 	controlName := parts[4]
@@ -351,9 +388,15 @@ func (drv *Driver) handleIncomingControlValue(msg MQTTMessage) {
 	if err != nil {
 		Error.Printf("Cannot register external device %s: %s", deviceName, err)
 	}
-	if dev != nil { // nil would mean a local device
-		dev.AcceptValue(controlName, msg.Payload)
+	if dev == nil { // nil means no devices are currently ready to accept the value
+		return
 	}
+	localDev, ok := dev.(LocalDeviceModel)
+	if ok && !localDev.IsVirtual() {
+		// devices that are connected to hardware must not pick up retained values
+		return
+	}
+	dev.AcceptValue(controlName, msg.Payload)
 }
 
 func (drv *Driver) handleExternalControlType(msg MQTTMessage) {

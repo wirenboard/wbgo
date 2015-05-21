@@ -9,13 +9,13 @@ type FakeModel struct {
 	Recorder
 	ModelBase
 	devices map[string]FakeDev
+	started bool
 }
 
 type FakeDev interface {
 	DeviceModel
 	GetValue(name string) string
 	GetType(name string) string
-	QueryParams()
 }
 
 type FakeDevice struct {
@@ -27,6 +27,7 @@ type FakeDevice struct {
 
 type FakeLocalDevice struct {
 	FakeDevice
+	virtual bool
 }
 
 type FakeExtDevice struct {
@@ -34,7 +35,10 @@ type FakeExtDevice struct {
 }
 
 func NewFakeModel(t *testing.T) (model *FakeModel) {
-	model = &FakeModel{devices: make(map[string]FakeDev)}
+	model = &FakeModel{
+		devices: make(map[string]FakeDev),
+		started: false,
+	}
 	model.InitRecorder(t)
 	return
 }
@@ -50,10 +54,13 @@ func (model *FakeModel) Start() error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		dev := model.devices[name]
-		model.Observer.OnNewDevice(dev)
-		dev.(FakeDev).QueryParams()
+		dev, ok := model.devices[name].(LocalDeviceModel)
+		if ok {
+			model.Observer.OnNewDevice(dev)
+			dev.(*FakeLocalDevice).QueryParams()
+		}
 	}
+	model.started = true
 	return nil
 }
 
@@ -68,22 +75,29 @@ func newFakeDevice(model *FakeModel, name string, title string) (dev *FakeDevice
 	return dev
 }
 
-func (model *FakeModel) MakeLocalDevice(name string, title string,
-	paramTypes map[string]string) (dev *FakeLocalDevice) {
-	if _, dup := model.devices[name]; dup {
-		// MakeLocalDevice may be invoked not from the
-		// test goroutine, but rather from driver's
-		// primary goroutine, so can't use testing's
-		// Fatalf here
-		Error.Panicf("duplicate device name %s", name)
-	}
-	dev = &FakeLocalDevice{*newFakeDevice(model, name, title)}
+func (model *FakeModel) makeLocalDevice(name string, title string,
+	paramTypes map[string]string, virtual bool) (dev *FakeLocalDevice) {
+	dev = &FakeLocalDevice{*newFakeDevice(model, name, title), virtual}
 	for k, v := range paramTypes {
 		dev.paramTypes[k] = v
 		dev.paramValues[k] = "0"
 	}
 	model.devices[name] = dev
+	if model.started {
+		model.Observer.OnNewDevice(dev)
+		dev.QueryParams()
+	}
 	return
+}
+
+func (model *FakeModel) MakeLocalDevice(name string, title string,
+	paramTypes map[string]string) (dev *FakeLocalDevice) {
+	return model.makeLocalDevice(name, title, paramTypes, false)
+}
+
+func (model *FakeModel) MakeLocalVirtualDevice(name string, title string,
+	paramTypes map[string]string) (dev *FakeLocalDevice) {
+	return model.makeLocalDevice(name, title, paramTypes, true)
 }
 
 func (model *FakeModel) AddExternalDevice(name string) (ExternalDeviceModel, error) {
@@ -117,20 +131,6 @@ func (dev *FakeDevice) AcceptValue(name, value string) {
 	return
 }
 
-func (dev *FakeDevice) QueryParams() {
-	// FIXME! sort
-	keys := make([]string, 0, len(dev.paramTypes))
-	for k := range dev.paramTypes {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		paramType := dev.paramTypes[k]
-		dev.Observer.OnNewControl(dev, k, paramType, dev.paramValues[k], false, -1,
-			paramType != "pushbutton")
-	}
-}
-
 func (dev *FakeDevice) ReceiveValue(name, value string) {
 	if _, found := dev.paramValues[name]; !found {
 		dev.model.T().Fatalf("trying to send unknown param %s (value %s)",
@@ -156,6 +156,24 @@ func (dev *FakeLocalDevice) AcceptOnValue(name, value string) bool {
 	dev.paramValues[name] = value
 	dev.model.Rec("AcceptOnValue: %s.%s = %s", dev.DevName, name, value)
 	return true
+}
+
+func (dev *FakeLocalDevice) QueryParams() {
+	// FIXME! sort
+	keys := make([]string, 0, len(dev.paramTypes))
+	for k := range dev.paramTypes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		paramType := dev.paramTypes[k]
+		dev.Observer.OnNewControl(dev, k, paramType, dev.paramValues[k], false, -1,
+			paramType != "pushbutton")
+	}
+}
+
+func (dev *FakeLocalDevice) IsVirtual() bool {
+	return dev.virtual
 }
 
 func (dev *FakeExtDevice) AcceptControlType(name, controlType string) {

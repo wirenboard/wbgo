@@ -1,6 +1,7 @@
 package wbgo
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -14,6 +15,8 @@ type driverFixture struct {
 }
 
 func newDriverFixture(t *testing.T) *driverFixture {
+	SetupTestLogging(t)
+
 	fixture := &driverFixture{
 		broker: NewFakeMQTTBroker(t),
 		model:  NewFakeModel(t),
@@ -28,24 +31,37 @@ func newDriverFixture(t *testing.T) *driverFixture {
 	return fixture
 }
 
-func TestDriver(t *testing.T) {
-	fixture := newDriverFixture(t)
-
-	dev := fixture.model.MakeLocalDevice("somedev", "SomeDev", map[string]string{
+func (fixture *driverFixture) createLocalDevice() *FakeLocalDevice {
+	return fixture.model.MakeLocalVirtualDevice("somedev", "SomeDev", map[string]string{
 		"paramOne": "switch",
 		"paramTwo": "switch",
 	})
-	fixture.driver.Start()
+}
 
+func (fixture *driverFixture) createLocalDeviceSync() *FakeLocalDevice {
+	// after the driver is started, new devices should be created
+	// only within the driver's coroutine
+	ch := make(chan *FakeLocalDevice)
+	fixture.driver.CallSync(func() {
+		ch <- fixture.createLocalDevice()
+	})
+	return <-ch
+}
+
+func (fixture *driverFixture) verifyLocalDevice(dev *FakeLocalDevice, invert bool) {
+	v1, v2 := "0", "1"
+	if invert {
+		v1, v2 = "1", "0"
+	}
 	fixture.broker.Verify(
 		"driver -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/paramOne/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/paramOne/meta/order: [1] (QoS 1, retained)",
-		"driver -> /devices/somedev/controls/paramOne: [0] (QoS 1, retained)",
+		fmt.Sprintf("driver -> /devices/somedev/controls/paramOne: [%s] (QoS 1, retained)", v1),
 		"Subscribe -- driver: /devices/somedev/controls/paramOne/on",
 		"driver -> /devices/somedev/controls/paramTwo/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/paramTwo/meta/order: [2] (QoS 1, retained)",
-		"driver -> /devices/somedev/controls/paramTwo: [0] (QoS 1, retained)",
+		fmt.Sprintf("driver -> /devices/somedev/controls/paramTwo: [%s] (QoS 1, retained)", v1),
 		"Subscribe -- driver: /devices/somedev/controls/paramTwo/on",
 	)
 
@@ -54,21 +70,28 @@ func TestDriver(t *testing.T) {
 		fixture.model.Verify("poll")
 	}
 
-	fixture.client.Publish(MQTTMessage{"/devices/somedev/controls/paramOne/on", "1", 1, false})
+	fixture.client.Publish(MQTTMessage{"/devices/somedev/controls/paramOne/on", v2, 1, false})
 	fixture.broker.Verify(
-		"tst -> /devices/somedev/controls/paramOne/on: [1] (QoS 1)",
-		"driver -> /devices/somedev/controls/paramOne: [1] (QoS 1, retained)",
+		fmt.Sprintf("tst -> /devices/somedev/controls/paramOne/on: [%s] (QoS 1)", v2),
+		fmt.Sprintf("driver -> /devices/somedev/controls/paramOne: [%s] (QoS 1, retained)", v2),
 	)
 	fixture.model.Verify(
-		"AcceptOnValue: somedev.paramOne = 1",
+		"AcceptOnValue: somedev.paramOne = " + v2,
 	)
 
 	fixture.driver.CallSync(func() {
-		dev.ReceiveValue("paramTwo", "1")
+		dev.ReceiveValue("paramTwo", v2)
 	})
 	fixture.broker.Verify(
-		"driver -> /devices/somedev/controls/paramTwo: [1] (QoS 1, retained)",
+		fmt.Sprintf("driver -> /devices/somedev/controls/paramTwo: [%s] (QoS 1, retained)", v2),
 	)
+}
+
+func TestDriver(t *testing.T) {
+	fixture := newDriverFixture(t)
+	dev := fixture.createLocalDevice()
+	fixture.driver.Start()
+	fixture.verifyLocalDevice(dev, false)
 
 	fixture.driver.Stop()
 	fixture.broker.Verify(
@@ -77,11 +100,9 @@ func TestDriver(t *testing.T) {
 	fixture.model.Verify()
 }
 
-func TestExternalDevices(t *testing.T) {
-	fixture := newDriverFixture(t)
+func (fixture *driverFixture) extDevSetup() {
 	fixture.driver.SetAcceptsExternalDevices(true)
 	fixture.driver.Start()
-	defer fixture.driver.Stop()
 
 	fixture.client.Publish(MQTTMessage{"/devices/somedev/meta/name", "SomeDev", 1, true})
 	fixture.broker.Verify(
@@ -91,13 +112,20 @@ func TestExternalDevices(t *testing.T) {
 		"Subscribe -- driver: /devices/+/controls/+/meta/max",
 		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 	)
-	WaitFor(t, func() bool {
+	WaitFor(fixture.t, func() bool {
 		c := make(chan bool)
 		fixture.driver.CallSync(func() {
 			c <- fixture.model.HasDevice("somedev")
 		})
 		return <-c
 	})
+}
+
+func TestExternalDevices(t *testing.T) {
+	fixture := newDriverFixture(t)
+	fixture.extDevSetup()
+	defer fixture.driver.Stop()
+
 	dev := fixture.model.GetDevice("somedev")
 	assert.NotEqual(t, nil, dev)
 
@@ -150,3 +178,35 @@ func TestExternalDevices(t *testing.T) {
 	assert.Equal(t, "755", dev.GetValue("paramTwo"))
 	assert.Equal(t, "pressure", dev.GetType("paramTwo"))
 }
+
+func TestConvertRemoteToLocal(t *testing.T) {
+	fixture := newDriverFixture(t)
+	fixture.extDevSetup()
+	defer fixture.driver.Stop()
+
+	dev := fixture.createLocalDeviceSync()
+	fixture.verifyLocalDevice(dev, false)
+}
+
+func TestLocalDeviceRedefinition(t *testing.T) {
+	fixture := newDriverFixture(t)
+	fixture.extDevSetup()
+	defer fixture.driver.Stop()
+
+	dev1 := fixture.createLocalDeviceSync()
+	fixture.verifyLocalDevice(dev1, false)
+
+	Debug.Printf("----------------------------------------")
+
+	dev2 := fixture.createLocalDeviceSync()
+
+	// old device removal causes unsubscription
+	fixture.broker.Verify(
+		"Unsubscribe -- driver: /devices/somedev/controls/paramOne/on",
+		"Unsubscribe -- driver: /devices/somedev/controls/paramTwo/on",
+	)
+
+	fixture.verifyLocalDevice(dev2, true)
+}
+
+// TBD: test non-virtual devices (local devices which don't pick up retained values)
