@@ -110,7 +110,7 @@ func (rec *Recorder) SkipTill(logItem string) {
 	for {
 		select {
 		case <-timer.C:
-			rec.t.Fatalf("failed waiting for log: %s", logItem)
+			rec.t.Fatalf("timed out waiting for log: %s", logItem)
 			return
 		case l := <-rec.ch:
 			if l == logItem {
