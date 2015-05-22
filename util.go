@@ -1,6 +1,7 @@
 package wbgo
 
 import (
+	"path/filepath"
 	"reflect"
 	"sync"
 )
@@ -65,4 +66,18 @@ func (dl *DeferredList) Ready() {
 		fn()
 	}
 	dl.fns = nil
+}
+
+// Truename returns the shortest absolute pathname
+// leading to the specified existing file.
+func Truename(filePath string) (string, error) {
+	p, err := filepath.EvalSymlinks(filePath)
+	if err != nil {
+		return filePath, err
+	}
+	p, err = filepath.Abs(p)
+	if err != nil {
+		return filePath, err
+	}
+	return filepath.Clean(p), nil
 }
