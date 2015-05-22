@@ -82,7 +82,7 @@ type ModelObserver interface {
 
 type DeviceObserver interface {
 	OnNewControl(dev LocalDeviceModel, name, paramType, value string, readOnly bool, max float64,
-		retain bool)
+		retain bool) string
 	OnValue(dev DeviceModel, name, value string)
 }
 
@@ -268,7 +268,7 @@ func (drv *Driver) subscribe(handler MQTTMessageHandler, topics ...string) {
 	drv.client.Subscribe(drv.wrapMessageHandler(handler), topics...)
 }
 
-func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, value string, readOnly bool, max float64, retain bool) {
+func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, value string, readOnly bool, max float64, retain bool) string {
 	controlTopic := drv.controlTopic(dev, controlName)
 	if drv.active && dev.IsVirtual() && retain {
 		// keep value in the case of new virtual device definition in the running driver
@@ -296,12 +296,13 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, va
 		drv.publishValue(dev, controlName, value)
 	}
 	if !readOnly {
-		Debug.Println("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
+		Debug.Printf("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
 		drv.subscribe(
 			drv.handleIncomingControlOnValue,
 			drv.controlTopic(dev, controlName, "on"))
 	}
 	drv.controlList[devName] = append(drv.controlList[devName], controlName)
+	return value
 }
 
 func (drv *Driver) OnValue(dev DeviceModel, controlName, value string) {
