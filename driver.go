@@ -269,6 +269,7 @@ func (drv *Driver) subscribe(handler MQTTMessageHandler, topics ...string) {
 }
 
 func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, value string, readOnly bool, max float64, retain bool) string {
+	Debug.Printf("new control for %s: %s of type %s, value %s", dev.Name(), controlName, paramType, value)
 	controlTopic := drv.controlTopic(dev, controlName)
 	if drv.active && dev.IsVirtual() && retain {
 		// keep value in the case of new virtual device definition in the running driver

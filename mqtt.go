@@ -84,6 +84,7 @@ func (client *PahoMQTTClient) Stop() {
 }
 
 func (client *PahoMQTTClient) Publish(message MQTTMessage) {
+	Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
 	m := MQTT.NewMessage([]byte(message.Payload))
 	m.SetQoS(MQTT.QoS(message.QoS))
 	m.SetRetainedFlag(message.Retained)
