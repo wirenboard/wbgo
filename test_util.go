@@ -2,6 +2,7 @@ package wbgo
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"log"
@@ -228,4 +229,80 @@ func SetupTempDir(t *testing.T) (string, func()) {
 		os.RemoveAll(dir)
 		os.Chdir(wd)
 	}
+}
+
+type FakeTimerFixture struct {
+	t           *testing.T
+	rec         *Recorder
+	nextTimerId int
+	timers      map[int]*fakeTimer
+}
+
+func NewFakeTimerFixture(t *testing.T, rec *Recorder) *FakeTimerFixture {
+	return &FakeTimerFixture{t, rec, 1, make(map[int]*fakeTimer)}
+}
+
+func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, periodic bool) Timer {
+	timer := &fakeTimer{
+		t:        fixture.t,
+		id:       id,
+		c:        make(chan time.Time),
+		d:        d,
+		periodic: periodic,
+		active:   true,
+		rec:      fixture.rec,
+	}
+	fixture.timers[id] = timer
+	what := "timer"
+	if periodic {
+		what = "ticker"
+	}
+	timer.rec.Rec("new fake %s: %d, %d", what, id, d/time.Millisecond)
+	return timer
+}
+
+func (fixture *FakeTimerFixture) NewFakeTimer(d time.Duration) Timer {
+	return fixture.NewFakeTimerOrTicker(-1, d, false)
+}
+
+func (fixture *FakeTimerFixture) NewFakeTicker(d time.Duration) Timer {
+	return fixture.NewFakeTimerOrTicker(-1, d, true)
+}
+
+func (fixture *FakeTimerFixture) FireTimer(id int, ts time.Time) {
+	if timer, found := fixture.timers[id]; !found {
+		fixture.t.Fatalf("FakeTimerFixture.FireTimer(): bad timer id: %d", id)
+	} else {
+		timer.fire(ts)
+	}
+}
+
+type fakeTimer struct {
+	t        *testing.T
+	id       int
+	c        chan time.Time
+	d        time.Duration
+	periodic bool
+	active   bool
+	rec      *Recorder
+}
+
+func (timer *fakeTimer) GetChannel() <-chan time.Time {
+	return timer.c
+}
+
+func (timer *fakeTimer) fire(t time.Time) {
+	timer.rec.Rec("timer.fire(): %d", timer.id)
+	assert.True(timer.t, timer.active)
+	timer.c <- t
+	if !timer.periodic {
+		timer.active = false
+	}
+}
+
+func (timer *fakeTimer) Stop() {
+	// note that we don't close timer here,
+	// mimicking the behavior of real timers and tickers
+	timer.active = false
+	timer.rec.Rec("timer.Stop(): %d", timer.id)
 }
