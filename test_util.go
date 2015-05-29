@@ -21,6 +21,8 @@ const (
 	REC_ITEM_TIMEOUT_MS    = 5000
 )
 
+var testStartTime = time.Date(2015, 2, 27, 19, 33, 17, 0, time.UTC)
+
 // WaitFor waits for the function specified by pred to return true.
 // The test fails if it takes too long.
 func WaitFor(t *testing.T, pred func() bool) {
@@ -73,7 +75,7 @@ func (rec *Recorder) VerifyEmpty() {
 	}
 }
 
-func (rec *Recorder) Verify(logs ...string) {
+func (rec *Recorder) verify(sortLogs bool, msg string, logs []string) {
 	if logs == nil {
 		rec.VerifyEmpty()
 	} else {
@@ -88,22 +90,20 @@ func (rec *Recorder) Verify(logs ...string) {
 				actualLogs = append(actualLogs, logItem)
 			}
 		}
-		require.Equal(rec.t, logs, actualLogs, "rec logs")
+		if sortLogs {
+			sort.Strings(logs)
+			sort.Strings(actualLogs)
+		}
+		require.Equal(rec.t, logs, actualLogs, msg)
 	}
 }
 
+func (rec *Recorder) Verify(logs ...string) {
+	rec.verify(false, "rec logs", logs)
+}
+
 func (rec *Recorder) VerifyUnordered(logs ...string) {
-	if logs == nil {
-		rec.VerifyEmpty()
-	} else {
-		sort.Strings(logs)
-		actualLogs := make([]string, 0, len(logs))
-		for _ = range logs {
-			actualLogs = append(actualLogs, <-rec.ch)
-		}
-		sort.Strings(actualLogs)
-		require.Equal(rec.t, logs, actualLogs, "rec logs (unordered)")
-	}
+	rec.verify(true, "rec logs (unordered)", logs)
 }
 
 func (rec *Recorder) SkipTill(logItem string) {
@@ -236,13 +236,22 @@ type FakeTimerFixture struct {
 	rec         *Recorder
 	nextTimerId int
 	timers      map[int]*fakeTimer
+	currentTime time.Time
 }
 
 func NewFakeTimerFixture(t *testing.T, rec *Recorder) *FakeTimerFixture {
-	return &FakeTimerFixture{t, rec, 1, make(map[int]*fakeTimer)}
+	return &FakeTimerFixture{t, rec, 1, make(map[int]*fakeTimer), testStartTime}
+}
+
+func (fixture *FakeTimerFixture) ResetTimerIndex() {
+	fixture.nextTimerId = 1
 }
 
 func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, periodic bool) Timer {
+	if id < 0 {
+		id = fixture.nextTimerId
+		fixture.nextTimerId++
+	}
 	timer := &fakeTimer{
 		t:        fixture.t,
 		id:       id,
@@ -269,6 +278,15 @@ func (fixture *FakeTimerFixture) NewFakeTicker(d time.Duration) Timer {
 	return fixture.NewFakeTimerOrTicker(-1, d, true)
 }
 
+func (fixture *FakeTimerFixture) CurrentTime() time.Time {
+	return fixture.currentTime
+}
+
+func (fixture *FakeTimerFixture) AdvanceTime(d time.Duration) time.Time {
+	fixture.currentTime = fixture.currentTime.Add(d)
+	return fixture.currentTime
+}
+
 func (fixture *FakeTimerFixture) FireTimer(id int, ts time.Time) {
 	if timer, found := fixture.timers[id]; !found {
 		fixture.t.Fatalf("FakeTimerFixture.FireTimer(): bad timer id: %d", id)
@@ -278,6 +296,7 @@ func (fixture *FakeTimerFixture) FireTimer(id int, ts time.Time) {
 }
 
 type fakeTimer struct {
+	sync.Mutex
 	t        *testing.T
 	id       int
 	c        chan time.Time
@@ -292,6 +311,8 @@ func (timer *fakeTimer) GetChannel() <-chan time.Time {
 }
 
 func (timer *fakeTimer) fire(t time.Time) {
+	timer.Lock()
+	defer timer.Unlock()
 	timer.rec.Rec("timer.fire(): %d", timer.id)
 	assert.True(timer.t, timer.active)
 	timer.c <- t
@@ -303,6 +324,8 @@ func (timer *fakeTimer) fire(t time.Time) {
 func (timer *fakeTimer) Stop() {
 	// note that we don't close timer here,
 	// mimicking the behavior of real timers and tickers
+	timer.Lock()
+	defer timer.Unlock()
 	timer.active = false
 	timer.rec.Rec("timer.Stop(): %d", timer.id)
 }
