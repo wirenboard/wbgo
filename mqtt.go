@@ -9,12 +9,17 @@ import (
 	"time"
 )
 
-const DISCONNECT_WAIT_MS = 100
+const (
+	DISCONNECT_WAIT_MS = 100
+	MQTT_QUEUE_SIZE    = 64
+)
 
 type PahoMQTTClient struct {
 	innerClient     *MQTT.MqttClient
 	waitForRetained bool
 	ready           chan struct{}
+	quit            chan struct{}
+	send            chan *MQTTMessage
 }
 
 func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *PahoMQTTClient) {
@@ -28,6 +33,8 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 		MQTT.NewClient(opts),
 		waitForRetained,
 		make(chan struct{}),
+		make(chan struct{}),
+		make(chan *MQTTMessage, MQTT_QUEUE_SIZE),
 	}
 	return
 }
@@ -77,24 +84,33 @@ func (client *PahoMQTTClient) Start() {
 	if err != nil {
 		panic(err)
 	}
+	go func() {
+		for {
+			select {
+			case <-client.quit:
+				return
+			case message := <-client.send:
+				Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
+				m := MQTT.NewMessage([]byte(message.Payload))
+				m.SetQoS(MQTT.QoS(message.QoS))
+				m.SetRetainedFlag(message.Retained)
+				if ch := client.innerClient.PublishMessage(message.Topic, m); ch != nil {
+					<-ch
+				} else {
+					Error.Printf("failed to publish message, topic: ", message.Topic) // FIXME
+				}
+			}
+		}
+	}()
 }
 
 func (client *PahoMQTTClient) Stop() {
 	client.innerClient.Disconnect(DISCONNECT_WAIT_MS)
+	client.quit <- struct{}{}
 }
 
 func (client *PahoMQTTClient) Publish(message MQTTMessage) {
-	Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
-	m := MQTT.NewMessage([]byte(message.Payload))
-	m.SetQoS(MQTT.QoS(message.QoS))
-	m.SetRetainedFlag(message.Retained)
-	go func() {
-		if ch := client.innerClient.PublishMessage(message.Topic, m); ch != nil {
-			<-ch
-		} else {
-			Error.Printf("PublishMessage() failed for topic: ", message.Topic) // FIXME
-		}
-	}()
+	client.send <- &message
 }
 
 func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...string) {
@@ -127,6 +143,7 @@ func (client *PahoMQTTClient) doSubscribe(callback MQTTMessageHandler, topics ..
 }
 
 func (client *PahoMQTTClient) Unsubscribe(topics ...string) {
+	Debug.Printf("UNSUB: %s", strings.Join(topics, "; "))
 	go func() {
 		if receipt, err := client.innerClient.EndSubscription(topics...); err != nil {
 			panic(err)
