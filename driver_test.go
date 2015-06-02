@@ -104,12 +104,14 @@ func (fixture *driverFixture) extDevSetup() {
 	fixture.driver.SetAcceptsExternalDevices(true)
 	fixture.driver.Start()
 
-	fixture.client.Publish(MQTTMessage{"/devices/somedev/meta/name", "SomeDev", 1, true})
 	fixture.broker.Verify(
 		"Subscribe -- driver: /devices/+/meta/name",
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
 		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+	)
+	fixture.client.Publish(MQTTMessage{"/devices/somedev/meta/name", "SomeDev", 1, true})
+	fixture.broker.Verify(
 		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 	)
 	WaitFor(fixture.t, func() bool {
