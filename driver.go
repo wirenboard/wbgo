@@ -130,6 +130,7 @@ type Driver struct {
 	model                  Model
 	client                 MQTTClient
 	eventCh                chan func()
+	handleMessageCh        chan func()
 	quit                   chan struct{}
 	poll                   chan time.Time
 	deviceMap              map[string]DeviceModel // TBD: wrap DeviceModel instead of using parallel structures
@@ -153,16 +154,17 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		// to avoid deadlocks in tests in a case when
 		// model change causes MQTT message to be generated
 		// that is passed back to the model
-		eventCh:        make(chan func(), EVENT_QUEUE_LEN),
-		quit:           make(chan struct{}),
-		poll:           make(chan time.Time),
-		deviceMap:      make(map[string]DeviceModel),
-		nextOrder:      make(map[string]int),
-		retainMap:      make(map[string]bool),
-		controlList:    make(map[string][]string),
-		receivedValues: make(map[string]string),
-		autoPoll:       true,
-		pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+		eventCh:         make(chan func(), EVENT_QUEUE_LEN),
+		handleMessageCh: make(chan func(), EVENT_QUEUE_LEN),
+		quit:            make(chan struct{}),
+		poll:            make(chan time.Time),
+		deviceMap:       make(map[string]DeviceModel),
+		nextOrder:       make(map[string]int),
+		retainMap:       make(map[string]bool),
+		controlList:     make(map[string][]string),
+		receivedValues:  make(map[string]string),
+		autoPoll:        true,
+		pollIntervalMs:  DEFAULT_POLL_INTERVAL_MS,
 	}
 	drv.whenReady = NewDeferredList(drv.CallSync)
 	drv.model.Observe(drv)
@@ -258,7 +260,7 @@ func (drv *Driver) OnNewDevice(dev DeviceModel) {
 // the driver's primary goroutine
 func (drv *Driver) wrapMessageHandler(handler MQTTMessageHandler) MQTTMessageHandler {
 	return func(msg MQTTMessage) {
-		drv.CallSync(func() {
+		drv.HandleMessageSync(func() {
 			handler(msg)
 		})
 	}
@@ -451,6 +453,10 @@ func (drv *Driver) CallSync(thunk func()) {
 	drv.eventCh <- thunk
 }
 
+func (drv *Driver) HandleMessageSync(thunk func()) {
+	drv.handleMessageCh <- thunk
+}
+
 func (drv *Driver) WhenReady(thunk func()) {
 	drv.whenReady.MaybeDefer(thunk)
 }
@@ -492,7 +498,7 @@ func (drv *Driver) Start() error {
 				select {
 				case <-subsDone:
 					break waitForSubs
-				case f := <-drv.eventCh:
+				case f := <-drv.handleMessageCh:
 					f()
 				}
 			}
@@ -515,6 +521,8 @@ func (drv *Driver) Start() error {
 				return
 			case <-pollChannel:
 				drv.model.Poll()
+			case f := <-drv.handleMessageCh:
+				f()
 			case f := <-drv.eventCh:
 				f()
 			}
