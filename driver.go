@@ -477,33 +477,14 @@ func (drv *Driver) Start() error {
 		pollChannel = ticker.C
 	}
 
-	subsDone := make(chan struct{})
 	if drv.acceptsExternalDevices {
-		go func() {
-			drv.subscribe(drv.handleDeviceTitle, "/devices/+/meta/name")
-			drv.subscribe(drv.handleIncomingControlValue, "/devices/+/controls/+")
-			drv.subscribe(drv.handleExternalControlType, "/devices/+/controls/+/meta/type")
-			drv.subscribe(drv.handleExternalControlMax, "/devices/+/controls/+/meta/max")
-			close(subsDone)
-		}()
+		drv.subscribe(drv.handleDeviceTitle, "/devices/+/meta/name")
+		drv.subscribe(drv.handleIncomingControlValue, "/devices/+/controls/+")
+		drv.subscribe(drv.handleExternalControlType, "/devices/+/controls/+/meta/type")
+		drv.subscribe(drv.handleExternalControlMax, "/devices/+/controls/+/meta/max")
 	}
 
 	go func() {
-		if drv.acceptsExternalDevices {
-			// here we handle thunks received via drv.eventCh to
-			// handle incoming messages before subscriptions are
-			// finished (because the messages are handled via CallSync)
-		waitForSubs:
-			for {
-				select {
-				case <-subsDone:
-					break waitForSubs
-				case f := <-drv.handleMessageCh:
-					f()
-				}
-			}
-		}
-
 		readyCh := drv.client.WaitForReady()
 		for {
 			select {

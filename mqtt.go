@@ -5,16 +5,20 @@ import (
 	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
 	"math/rand"
 	"os"
-	"strings"
 	"time"
 )
 
-const DISCONNECT_WAIT_MS = 100
+const (
+	DISCONNECT_WAIT_MS = 100
+	TOKEN_QUEUE_LEN    = 512
+)
 
 type PahoMQTTClient struct {
 	innerClient     *MQTT.Client
 	waitForRetained bool
 	ready           chan struct{}
+	stopped         chan struct{}
+	tokens          chan MQTT.Token
 }
 
 func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *PahoMQTTClient) {
@@ -28,6 +32,8 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 		MQTT.NewClient(opts),
 		waitForRetained,
 		make(chan struct{}),
+		make(chan struct{}),
+		make(chan MQTT.Token, TOKEN_QUEUE_LEN),
 	}
 	return
 }
@@ -48,7 +54,7 @@ func (client *PahoMQTTClient) WaitForReady() <-chan struct{} {
 			got1, got2 := false, false
 			// subscribe synchronously to make sure that
 			// messages are published after the subscription is complete
-			client.Subscribe(func(msg MQTTMessage) {
+			token := client.subscribe(func(msg MQTTMessage) {
 				switch {
 				case got1 && got2:
 					// avoid closing the channel twice upon QoS1
@@ -64,6 +70,12 @@ func (client *PahoMQTTClient) WaitForReady() <-chan struct{} {
 					close(client.ready)
 				}
 			}, waitTopic)
+			token.Wait()
+			if token.Error() != nil {
+				Error.Printf("wbretainhack subscription failed: %s", token.Error())
+				// don't hang there, anyway
+				close(client.ready)
+			}
 			client.Publish(MQTTMessage{Topic: waitTopic, Payload: "1", QoS: 1})
 			client.Publish(MQTTMessage{Topic: waitTopic, Payload: "2", QoS: 2})
 		}()
@@ -76,22 +88,33 @@ func (client *PahoMQTTClient) Start() {
 	if token := client.innerClient.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
+	go func() {
+		for {
+			select {
+			case <-client.stopped:
+				return
+			case token := <-client.tokens:
+				token.Wait()
+				if token.Error() != nil {
+					Error.Printf("MQTT error: %s", token.Error())
+				}
+			}
+		}
+	}()
 }
 
 func (client *PahoMQTTClient) Stop() {
 	client.innerClient.Disconnect(DISCONNECT_WAIT_MS)
+	client.stopped <- struct{}{}
 }
 
 func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 	Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
-	token := client.innerClient.Publish(
+	client.tokens <- client.innerClient.Publish(
 		message.Topic, message.QoS, message.Retained, message.Payload)
-	if !token.Wait() || token.Error() != nil {
-		Error.Printf("PublishMessage() failed for topic: ", message.Topic) // FIXME
-	}
 }
 
-func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...string) {
+func (client *PahoMQTTClient) subscribe(callback MQTTMessageHandler, topics ...string) MQTT.Token {
 	filters := make(map[string]byte)
 	for _, topic := range topics {
 		filters[topic] = 2
@@ -103,10 +126,11 @@ func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...s
 			byte(msg.Qos()), msg.Retained()})
 	}
 
-	if token := client.innerClient.SubscribeMultiple(filters, wrappedCallback); token.Wait() && token.Error() != nil {
-		Error.Printf("Subscription failed (topics %s): %s",
-			strings.Join(topics, ", "), token.Error())
-	}
+	return client.innerClient.SubscribeMultiple(filters, wrappedCallback)
+}
+
+func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...string) {
+	client.tokens <- client.subscribe(callback, topics...)
 }
 
 func (client *PahoMQTTClient) Unsubscribe(topics ...string) {
