@@ -5,7 +5,7 @@ import (
 )
 
 func TestFakeMQTT(t *testing.T) {
-	broker := NewFakeMQTTBroker(t)
+	broker := NewFakeMQTTBroker(t, nil)
 
 	c1 := broker.MakeClient("c1")
 	c1.Start()

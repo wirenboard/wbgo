@@ -38,16 +38,21 @@ type SubscriptionList []*FakeMQTTClient
 type SubscriptionMap map[string]SubscriptionList
 
 type FakeMQTTBroker struct {
-	Recorder
+	*Recorder
 	sync.Mutex
 	subscriptions   SubscriptionMap
 	waitForRetained bool
 	readyChannels   []chan struct{}
 }
 
-func NewFakeMQTTBroker(t *testing.T) (broker *FakeMQTTBroker) {
-	broker = &FakeMQTTBroker{subscriptions: make(SubscriptionMap)}
-	broker.InitRecorder(t)
+func NewFakeMQTTBroker(t *testing.T, rec *Recorder) (broker *FakeMQTTBroker) {
+	if rec == nil {
+		rec = NewRecorder(t)
+	}
+	broker = &FakeMQTTBroker{
+		Recorder:      rec,
+		subscriptions: make(SubscriptionMap),
+	}
 	return
 }
 
@@ -153,7 +158,7 @@ func (client *FakeMQTTClient) WaitForReady() <-chan struct{} {
 
 func (client *FakeMQTTClient) Start() {
 	if client.started {
-		client.broker.T().Fatalf("%s: client already started", client.id)
+		client.broker.t.Fatalf("%s: client already started", client.id)
 	}
 	client.started = true
 	if !client.broker.waitForRetained {
@@ -169,7 +174,7 @@ func (client *FakeMQTTClient) Stop() {
 
 func (client *FakeMQTTClient) ensureStarted() {
 	if !client.started {
-		client.broker.T().Fatalf("%s: client not started", client.id)
+		client.broker.t.Fatalf("%s: client not started", client.id)
 	}
 }
 
@@ -200,5 +205,18 @@ func (client *FakeMQTTClient) Unsubscribe(topics ...string) {
 	for _, topic := range topics {
 		client.broker.Unsubscribe(client, topic)
 		delete(client.callbackMap, topic)
+	}
+}
+
+type FakeMQTTFixture struct {
+	*Recorder
+	Broker *FakeMQTTBroker
+}
+
+func NewFakeMQTTFixture(t *testing.T) *FakeMQTTFixture {
+	rec := NewRecorder(t)
+	return &FakeMQTTFixture{
+		Recorder: rec,
+		Broker:   NewFakeMQTTBroker(t, rec),
 	}
 }

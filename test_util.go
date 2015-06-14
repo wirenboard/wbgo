@@ -2,8 +2,8 @@ package wbgo
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"io/ioutil"
 	"log"
 	"os"
@@ -35,21 +35,31 @@ func WaitFor(t *testing.T, pred func() bool) {
 	t.Fatalf("WaitFor() failed")
 }
 
+type Fixture struct {
+	t *testing.T
+}
+
+func (fixture *Fixture) T() *testing.T {
+	return fixture.t
+}
+
+func NewFixture(t *testing.T) *Fixture {
+	return &Fixture{t}
+}
+
 type Recorder struct {
-	t             *testing.T
+	*Fixture
 	ch            chan string
 	emptyWaitTime time.Duration
 }
 
 func NewRecorder(t *testing.T) *Recorder {
-	rec := &Recorder{emptyWaitTime: REC_EMPTY_WAIT_TIME_MS * time.Millisecond}
-	rec.InitRecorder(t)
+	rec := &Recorder{
+		Fixture:       NewFixture(t),
+		ch:            make(chan string, 1000),
+		emptyWaitTime: REC_EMPTY_WAIT_TIME_MS * time.Millisecond,
+	}
 	return rec
-}
-
-func (rec *Recorder) InitRecorder(t *testing.T) {
-	rec.t = t
-	rec.ch = make(chan string, 1000)
 }
 
 func (rec *Recorder) Rec(format string, args ...interface{}) {
@@ -120,10 +130,6 @@ func (rec *Recorder) SkipTill(logItem string) {
 			}
 		}
 	}
-}
-
-func (rec *Recorder) T() *testing.T {
-	return rec.t
 }
 
 // TestLog makes it possible to use log module with testing's
@@ -231,101 +237,32 @@ func SetupTempDir(t *testing.T) (string, func()) {
 	}
 }
 
-type FakeTimerFixture struct {
-	t           *testing.T
-	rec         *Recorder
-	nextTimerId int
-	timers      map[int]*fakeTimer
-	currentTime time.Time
+type Suite struct {
+	suite.Suite
 }
 
-func NewFakeTimerFixture(t *testing.T, rec *Recorder) *FakeTimerFixture {
-	return &FakeTimerFixture{t, rec, 1, make(map[int]*fakeTimer), testStartTime}
+func (suite *Suite) SetupTest() {
+	SetupTestLogging(suite.T())
 }
 
-func (fixture *FakeTimerFixture) ResetTimerIndex() {
-	fixture.nextTimerId = 1
+func (suite *Suite) TearDown() {
+	suite.EnsureNoErrorsOrWarnings()
 }
 
-func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, periodic bool) Timer {
-	if id < 0 {
-		id = fixture.nextTimerId
-		fixture.nextTimerId++
-	}
-	timer := &fakeTimer{
-		t:        fixture.t,
-		id:       id,
-		c:        make(chan time.Time),
-		d:        d,
-		periodic: periodic,
-		active:   true,
-		rec:      fixture.rec,
-	}
-	fixture.timers[id] = timer
-	what := "timer"
-	if periodic {
-		what = "ticker"
-	}
-	timer.rec.Rec("new fake %s: %d, %d", what, id, d/time.Millisecond)
-	return timer
+func (suite *Suite) EnsureNoErrorsOrWarnings() {
+	EnsureNoErrorsOrWarnings(suite.T())
 }
 
-func (fixture *FakeTimerFixture) NewFakeTimer(d time.Duration) Timer {
-	return fixture.NewFakeTimerOrTicker(-1, d, false)
+func (suite *Suite) EnsureGotErrors() {
+	EnsureGotErrors(suite.T())
 }
 
-func (fixture *FakeTimerFixture) NewFakeTicker(d time.Duration) Timer {
-	return fixture.NewFakeTimerOrTicker(-1, d, true)
+func (suite *Suite) EnsureGotWarnings() {
+	EnsureGotWarnings(suite.T())
 }
 
-func (fixture *FakeTimerFixture) CurrentTime() time.Time {
-	return fixture.currentTime
-}
-
-func (fixture *FakeTimerFixture) AdvanceTime(d time.Duration) time.Time {
-	fixture.currentTime = fixture.currentTime.Add(d)
-	return fixture.currentTime
-}
-
-func (fixture *FakeTimerFixture) FireTimer(id int, ts time.Time) {
-	if timer, found := fixture.timers[id]; !found {
-		fixture.t.Fatalf("FakeTimerFixture.FireTimer(): bad timer id: %d", id)
-	} else {
-		timer.fire(ts)
-	}
-}
-
-type fakeTimer struct {
-	sync.Mutex
-	t        *testing.T
-	id       int
-	c        chan time.Time
-	d        time.Duration
-	periodic bool
-	active   bool
-	rec      *Recorder
-}
-
-func (timer *fakeTimer) GetChannel() <-chan time.Time {
-	return timer.c
-}
-
-func (timer *fakeTimer) fire(t time.Time) {
-	timer.Lock()
-	defer timer.Unlock()
-	timer.rec.Rec("timer.fire(): %d", timer.id)
-	assert.True(timer.t, timer.active)
-	timer.c <- t
-	if !timer.periodic {
-		timer.active = false
-	}
-}
-
-func (timer *fakeTimer) Stop() {
-	// note that we don't close timer here,
-	// mimicking the behavior of real timers and tickers
-	timer.Lock()
-	defer timer.Unlock()
-	timer.active = false
-	timer.rec.Rec("timer.Stop(): %d", timer.id)
+// RunSuite is here just to avoid an extra import
+// of testify's suite.Run
+func RunSuite(t *testing.T, s suite.TestingSuite) {
+	suite.Run(t, s)
 }

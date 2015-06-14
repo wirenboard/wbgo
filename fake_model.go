@@ -6,7 +6,7 @@ import (
 )
 
 type FakeModel struct {
-	Recorder
+	*Recorder
 	ModelBase
 	devices map[string]FakeDev
 	started bool
@@ -36,10 +36,10 @@ type FakeExtDevice struct {
 
 func NewFakeModel(t *testing.T) (model *FakeModel) {
 	model = &FakeModel{
-		devices: make(map[string]FakeDev),
-		started: false,
+		Recorder: NewRecorder(t),
+		devices:  make(map[string]FakeDev),
+		started:  false,
 	}
-	model.InitRecorder(t)
 	return
 }
 
@@ -113,7 +113,7 @@ func (model *FakeModel) HasDevice(name string) bool {
 
 func (model *FakeModel) GetDevice(name string) FakeDev {
 	if dev, found := model.devices[name]; !found {
-		model.T().Fatalf("unknown device %s", name)
+		model.t.Fatalf("unknown device %s", name)
 		return nil
 	} else {
 		return dev
@@ -133,7 +133,7 @@ func (dev *FakeDevice) AcceptValue(name, value string) {
 
 func (dev *FakeDevice) ReceiveValue(name, value string) {
 	if _, found := dev.paramValues[name]; !found {
-		dev.model.T().Fatalf("trying to send unknown param %s (value %s)",
+		dev.model.t.Fatalf("trying to send unknown param %s (value %s)",
 			name, value)
 	} else {
 		dev.paramValues[name] = value
