@@ -516,6 +516,7 @@ func (drv *Driver) Stop() {
 	if !drv.active {
 		return
 	}
+	drv.active = false
 	Debug.Printf("Driver.Stop()")
 	drv.quit <- struct{}{}
 }
