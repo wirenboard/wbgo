@@ -27,7 +27,7 @@ func (s *DriverSuiteBase) SetupTest() {
 
 func (s *DriverSuiteBase) TearDownTest() {
 	s.driver.Stop()
-	s.Suite.TearDown()
+	s.Suite.TearDownTest()
 }
 
 func (s *DriverSuiteBase) createLocalDevice() *FakeLocalDevice {
@@ -121,7 +121,7 @@ func (s *ExtDriverSuite) SetupTest() {
 	s.Verify(
 		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 	)
-	WaitFor(s.T(), func() bool {
+	s.WaitFor(func() bool {
 		c := make(chan bool)
 		s.driver.CallSync(func() {
 			c <- s.model.HasDevice("somedev")
@@ -207,8 +207,7 @@ func (s *ExtDriverSuite) TestLocalDeviceRedefinition() {
 }
 
 func TestDriverSuite(t *testing.T) {
-	RunSuite(t, new(LocalDriverSuite))
-	RunSuite(t, new(ExtDriverSuite))
+	RunSuites(t, new(LocalDriverSuite), new(ExtDriverSuite))
 }
 
 // TBD: test non-virtual devices (local devices which don't pick up retained values)

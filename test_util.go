@@ -245,7 +245,7 @@ func (suite *Suite) SetupTest() {
 	SetupTestLogging(suite.T())
 }
 
-func (suite *Suite) TearDown() {
+func (suite *Suite) TearDownTest() {
 	suite.EnsureNoErrorsOrWarnings()
 }
 
@@ -261,8 +261,13 @@ func (suite *Suite) EnsureGotWarnings() {
 	EnsureGotWarnings(suite.T())
 }
 
-// RunSuite is here just to avoid an extra import
-// of testify's suite.Run
-func RunSuite(t *testing.T, s suite.TestingSuite) {
-	suite.Run(t, s)
+func (suite *Suite) WaitFor(pred func() bool) {
+	WaitFor(suite.T(), pred)
+}
+
+// RunSuites runs the specified test suites
+func RunSuites(t *testing.T, suites ...suite.TestingSuite) {
+	for _, s := range suites {
+		suite.Run(t, s)
+	}
 }
