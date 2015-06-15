@@ -53,6 +53,12 @@ func (s *RPCSuite) SetupTest() {
 	s.Verify("Subscribe -- samplerpc: /wbrpc/SampleRpc/+/+/+")
 }
 
+func (s *RPCSuite) TearDownTest() {
+	s.rpc.Stop()
+	s.Verify("Unsubscribe -- samplerpc: /wbrpc/SampleRpc/+/+/+")
+	s.Suite.TearDownTest()
+}
+
 func (s *RPCSuite) publish(topic string, payload objx.Map) string {
 	payloadStr := payload.MustJSON()
 	s.client.Publish(MQTTMessage{topic, payloadStr, 1, false})
@@ -158,6 +164,5 @@ func TestRPCSuite(t *testing.T) {
 	RunSuites(t, new(RPCSuite))
 }
 
-// TBD: test stopping service (may just check it in TearDownTest)
 // Note for the js side: must obtain seq id by combining two numbers
 // because JS Number cannot represent the whole range of uint64

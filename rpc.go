@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -73,10 +74,13 @@ func (c *mqttRpcCodec) Close() error {
 }
 
 type MQTTRPCServer struct {
+	sync.Mutex
 	prefix    string
 	server    *rpc.Server
 	client    MQTTClient
 	messageCh chan MQTTMessage
+	active    bool
+	quit      chan struct{}
 }
 
 func NewMQTTRPCServer(prefix string, client MQTTClient) (mqttRpc *MQTTRPCServer) {
@@ -85,21 +89,48 @@ func NewMQTTRPCServer(prefix string, client MQTTClient) (mqttRpc *MQTTRPCServer)
 		server:    rpc.NewServer(),
 		client:    client,
 		messageCh: make(chan MQTTMessage, RPC_MESSAGE_QUEUE_LEN),
+		active:    false,
 	}
 	return
 }
 
 func (mqttRpc *MQTTRPCServer) Start() {
+	mqttRpc.Lock()
+	defer mqttRpc.Unlock()
+	if mqttRpc.active {
+		return
+	}
+	mqttRpc.active = true
+	mqttRpc.quit = make(chan struct{})
 	mqttRpc.client.Start()
 	mqttRpc.client.Subscribe(func(message MQTTMessage) {
 		mqttRpc.messageCh <- message
-	}, mqttRpc.prefix+"/+/+/+")
+	}, mqttRpc.subscriptionTopic())
 	go mqttRpc.processMessages()
+}
+
+func (mqttRpc *MQTTRPCServer) Stop() {
+	mqttRpc.Lock()
+	defer mqttRpc.Unlock()
+	if !mqttRpc.active {
+		return
+	}
+	close(mqttRpc.quit)
+}
+
+func (mqttRpc *MQTTRPCServer) subscriptionTopic() string {
+	return mqttRpc.prefix + "/+/+/+"
 }
 
 func (mqttRpc *MQTTRPCServer) processMessages() {
 	for {
-		mqttRpc.handleMessage(<-mqttRpc.messageCh)
+		select {
+		case <-mqttRpc.quit:
+			mqttRpc.client.Unsubscribe(mqttRpc.subscriptionTopic())
+			return
+		case msg := <-mqttRpc.messageCh:
+			mqttRpc.handleMessage(msg)
+		}
 	}
 }
 
