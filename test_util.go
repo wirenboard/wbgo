@@ -186,6 +186,16 @@ func (tl *TestLog) VerifyUsed(msg string) {
 	tl.pristine = true
 }
 
+func (tl *TestLog) WaitForMessages() {
+	WaitFor(tl.t, func() (r bool) {
+		tl.Lock()
+		defer tl.Unlock()
+		r = !tl.pristine
+		tl.pristine = true
+		return
+	})
+}
+
 var errorTestLog, warnTestLog *TestLog
 
 // SetupTestLogging sets up the logging output in such way
@@ -210,6 +220,14 @@ func EnsureGotErrors(t *testing.T) {
 
 func EnsureGotWarnings(t *testing.T) {
 	warnTestLog.VerifyUsed("No warnings detected (but should be)")
+}
+
+func WaitForErrors(t *testing.T) {
+	errorTestLog.WaitForMessages()
+}
+
+func WaitForWarnings(t *testing.T) {
+	warnTestLog.WaitForMessages()
 }
 
 // SetupTempDir creates a temporary directory to be used in tests and
@@ -259,6 +277,14 @@ func (suite *Suite) EnsureGotErrors() {
 
 func (suite *Suite) EnsureGotWarnings() {
 	EnsureGotWarnings(suite.T())
+}
+
+func (suite *Suite) WaitForErrors() {
+	WaitForErrors(suite.T())
+}
+
+func (suite *Suite) WaitForWarnings() {
+	WaitForWarnings(suite.T())
 }
 
 func (suite *Suite) WaitFor(pred func() bool) {

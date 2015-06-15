@@ -45,6 +45,11 @@ func (c *mqttRpcCodec) ReadRequestBody(x interface{}) (err error) {
 		c.request = nil
 		return nil
 	}
+
+	if c.request.Params == nil {
+		return fmt.Errorf("no params provided for RPC request")
+	}
+
 	// based on idea from Go's json RPC server
 	var params [1]interface{}
 	params[0] = x
