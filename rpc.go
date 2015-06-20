@@ -145,8 +145,9 @@ func (mqttRpc *MQTTRPCServer) handleMessage(message MQTTMessage) {
 		Error.Printf("invalid MQTT rpc message received for topic %s", message.Topic)
 		return
 	}
-	serviceName := parts[len(parts)-2]
-	methodName := parts[len(parts)-1]
+	serviceName := parts[len(parts)-3]
+	methodName := parts[len(parts)-2]
+	// parts[len(parts)-2] is client id
 	codec := &mqttRpcCodec{
 		request:    &req,
 		methodName: serviceName + "." + methodName,
