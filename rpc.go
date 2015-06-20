@@ -12,6 +12,7 @@ import (
 
 const (
 	RPC_MESSAGE_QUEUE_LEN = 32
+	RPC_APP_PREFIX        = "/rpc/v1/"
 )
 
 type rpcRequest struct {
@@ -83,9 +84,9 @@ type MQTTRPCServer struct {
 	quit      chan struct{}
 }
 
-func NewMQTTRPCServer(prefix string, client MQTTClient) (mqttRpc *MQTTRPCServer) {
+func NewMQTTRPCServer(appName string, client MQTTClient) (mqttRpc *MQTTRPCServer) {
 	mqttRpc = &MQTTRPCServer{
-		prefix:    prefix,
+		prefix:    RPC_APP_PREFIX + appName,
 		server:    rpc.NewServer(),
 		client:    client,
 		messageCh: make(chan MQTTMessage, RPC_MESSAGE_QUEUE_LEN),

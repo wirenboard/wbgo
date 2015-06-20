@@ -43,19 +43,19 @@ type RPCSuite struct {
 func (s *RPCSuite) SetupTest() {
 	s.Suite.SetupTest()
 	s.FakeMQTTFixture = NewFakeMQTTFixture(s.T())
-	s.rpc = NewMQTTRPCServer("/wbrpc/SampleRpc", s.Broker.MakeClient("samplerpc"))
+	s.rpc = NewMQTTRPCServer("SampleRpc", s.Broker.MakeClient("samplerpc"))
 	if err := s.rpc.Register(new(Arith)); err != nil {
 		s.Require().Fail("registration error", "%s", err)
 	}
 	s.client = s.Broker.MakeClient("tst")
 	s.client.Start()
 	s.rpc.Start()
-	s.Verify("Subscribe -- samplerpc: /wbrpc/SampleRpc/+/+/+")
+	s.Verify("Subscribe -- samplerpc: /rpc/v1/SampleRpc/+/+/+")
 }
 
 func (s *RPCSuite) TearDownTest() {
 	s.rpc.Stop()
-	s.Verify("Unsubscribe -- samplerpc: /wbrpc/SampleRpc/+/+/+")
+	s.Verify("Unsubscribe -- samplerpc: /rpc/v1/SampleRpc/+/+/+")
 	s.Suite.TearDownTest()
 }
 
@@ -67,7 +67,7 @@ func (s *RPCSuite) publish(topic string, payload objx.Map) string {
 
 func (s *RPCSuite) TestRPC() {
 	for i := 0; i < 10; i++ {
-		jsonStr := s.publish("/wbrpc/SampleRpc/Arith/Multiply/b692040b", objx.Map{
+		jsonStr := s.publish("/rpc/v1/SampleRpc/Arith/Multiply/b692040b", objx.Map{
 			"id": strconv.Itoa(i),
 			"params": []objx.Map{
 				objx.Map{"A": i, "B": i + 1},
@@ -75,9 +75,9 @@ func (s *RPCSuite) TestRPC() {
 		})
 		s.Verify(
 			fmt.Sprintf(
-				"tst -> /wbrpc/SampleRpc/Arith/Multiply/b692040b: [%s] (QoS 1)", jsonStr),
+				"tst -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b: [%s] (QoS 1)", jsonStr),
 			fmt.Sprintf(
-				"samplerpc -> /wbrpc/SampleRpc/Arith/Multiply/b692040b/reply: [%s] (QoS 1)",
+				"samplerpc -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b/reply: [%s] (QoS 1)",
 				objx.Map{
 					"id":     strconv.Itoa(i),
 					"result": i * (i + 1),
@@ -88,7 +88,7 @@ func (s *RPCSuite) TestRPC() {
 }
 
 func (s *RPCSuite) TestErrors() {
-	jsonStr := s.publish("/wbrpc/SampleRpc/Arith/Divide/b692040b", objx.Map{
+	jsonStr := s.publish("/rpc/v1/SampleRpc/Arith/Divide/b692040b", objx.Map{
 		"id": "0",
 		"params": []objx.Map{
 			objx.Map{"A": 10, "B": 0},
@@ -96,9 +96,9 @@ func (s *RPCSuite) TestErrors() {
 	})
 	s.Verify(
 		fmt.Sprintf(
-			"tst -> /wbrpc/SampleRpc/Arith/Divide/b692040b: [%s] (QoS 1)", jsonStr),
+			"tst -> /rpc/v1/SampleRpc/Arith/Divide/b692040b: [%s] (QoS 1)", jsonStr),
 		fmt.Sprintf(
-			"samplerpc -> /wbrpc/SampleRpc/Arith/Divide/b692040b/reply: [%s] (QoS 1)",
+			"samplerpc -> /rpc/v1/SampleRpc/Arith/Divide/b692040b/reply: [%s] (QoS 1)",
 			objx.Map{
 				"id":     "0",
 				"result": nil,
@@ -114,18 +114,18 @@ func (s *RPCSuite) TestMalformedJSONRequest() {
 		params interface{}
 	}{
 		// no params
-		{id: "0", topic: "/wbrpc/SampleRpc/Arith/Multiply/b692040b"},
+		{id: "0", topic: "/rpc/v1/SampleRpc/Arith/Multiply/b692040b"},
 		// params must be an array
-		{id: "1", params: objx.Map{}, topic: "/wbrpc/SampleRpc/Arith/Multiply/b692040b"},
+		{id: "1", params: objx.Map{}, topic: "/rpc/v1/SampleRpc/Arith/Multiply/b692040b"},
 		// no id
-		{params: []objx.Map{}, topic: "/wbrpc/SampleRpc/Arith/Multiply/b692040b"},
+		{params: []objx.Map{}, topic: "/rpc/v1/SampleRpc/Arith/Multiply/b692040b"},
 		// wrong types
 		{
 			id: "2",
 			params: []objx.Map{
 				objx.Map{"A": "xx", "B": 2},
 			},
-			topic: "/wbrpc/SampleRpc/Arith/Multiply/b692040b",
+			topic: "/rpc/v1/SampleRpc/Arith/Multiply/b692040b",
 		},
 	}
 
@@ -140,7 +140,7 @@ func (s *RPCSuite) TestMalformedJSONRequest() {
 		s.publish(req.topic, jsonRequest)
 		s.Verify(
 			fmt.Sprintf(
-				"tst -> /wbrpc/SampleRpc/Arith/Multiply/b692040b: [%s] (QoS 1)",
+				"tst -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b: [%s] (QoS 1)",
 				jsonRequest.MustJSON()))
 		s.VerifyEmpty()
 		s.WaitForErrors()
@@ -150,12 +150,12 @@ func (s *RPCSuite) TestMalformedJSONRequest() {
 func (s *RPCSuite) TestMalformedJSON() {
 	s.client.Publish(
 		MQTTMessage{
-			"/wbrpc/SampleRpc/Arith/Multiply/b692040b",
+			"/rpc/v1/SampleRpc/Arith/Multiply/b692040b",
 			"blabla",
 			1,
 			false,
 		})
-	s.Verify("tst -> /wbrpc/SampleRpc/Arith/Multiply/b692040b: [blabla] (QoS 1)")
+	s.Verify("tst -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b: [blabla] (QoS 1)")
 	s.VerifyEmpty()
 	s.WaitForErrors()
 }
