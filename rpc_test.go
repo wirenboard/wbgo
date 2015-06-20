@@ -50,7 +50,11 @@ func (s *RPCSuite) SetupTest() {
 	s.client = s.Broker.MakeClient("tst")
 	s.client.Start()
 	s.rpc.Start()
-	s.Verify("Subscribe -- samplerpc: /rpc/v1/SampleRpc/+/+/+")
+	s.Verify(
+		"Subscribe -- samplerpc: /rpc/v1/SampleRpc/+/+/+",
+		"samplerpc -> /rpc/v1/SampleRpc/Arith/Divide: [1] (QoS 1, retained)",
+		"samplerpc -> /rpc/v1/SampleRpc/Arith/Multiply: [1] (QoS 1, retained)",
+	)
 }
 
 func (s *RPCSuite) TearDownTest() {
@@ -166,3 +170,4 @@ func TestRPCSuite(t *testing.T) {
 
 // Note for the js side: must obtain seq id by combining two numbers
 // because JS Number cannot represent the whole range of uint64
+// TBD: Unpublish on disconnect
