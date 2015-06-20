@@ -170,4 +170,3 @@ func TestRPCSuite(t *testing.T) {
 
 // Note for the js side: must obtain seq id by combining two numbers
 // because JS Number cannot represent the whole range of uint64
-// TBD: Unpublish on disconnect
