@@ -100,7 +100,7 @@ type rpcRequest struct {
 }
 
 type rpcSuccessResponse struct {
-	Id     string      `json:"id"`
+	Id     interface{} `json:"id"`
 	Result interface{} `json:"result"`
 }
 
@@ -482,7 +482,7 @@ func (server *MQTTRPCServer) parseMessage(message MQTTMessage) (service *service
 func (server *MQTTRPCServer) buildResponse(replyId interface{}, result interface{}, err error) (response interface{}) {
 	if err == nil {
 		response = &rpcSuccessResponse{
-			Id:     replyId.(string),
+			Id:     replyId,
 			Result: result,
 		}
 		return

@@ -122,23 +122,28 @@ func (s *RPCSuite) publish(topic string, payload interface{}) string {
 	return payloadStr
 }
 
+func (s *RPCSuite) verifyCall(i int, id interface{}) {
+	jsonStr := s.publish("/rpc/v1/SampleRpc/Arith/Multiply/b692040b", objx.Map{
+		"id": id,
+		"params": []objx.Map{
+			objx.Map{"A": i, "B": i + 1},
+		},
+	})
+	s.verifyMessages(
+		"tst -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b: [%s] (QoS 1)",
+		jsonStr,
+		"samplerpc -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b/reply: [%s] (QoS 1)",
+		objx.Map{
+			"id":     id,
+			"result": i * (i + 1),
+		},
+	)
+}
+
 func (s *RPCSuite) TestRPC() {
 	for i := 0; i < 10; i++ {
-		jsonStr := s.publish("/rpc/v1/SampleRpc/Arith/Multiply/b692040b", objx.Map{
-			"id": strconv.Itoa(i),
-			"params": []objx.Map{
-				objx.Map{"A": i, "B": i + 1},
-			},
-		})
-		s.verifyMessages(
-			"tst -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b: [%s] (QoS 1)",
-			jsonStr,
-			"samplerpc -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b/reply: [%s] (QoS 1)",
-			objx.Map{
-				"id":     strconv.Itoa(i),
-				"result": i * (i + 1),
-			},
-		)
+		s.verifyCall(i, i)
+		s.verifyCall(i, strconv.Itoa(i))
 	}
 }
 
