@@ -32,7 +32,7 @@ func WaitFor(t *testing.T, pred func() bool) {
 		}
 		time.Sleep(WAIT_INTERVAL_MS * time.Millisecond)
 	}
-	t.Fatalf("WaitFor() failed")
+	require.FailNow(t, "WaitFor() failed")
 }
 
 type Fixture struct {
@@ -81,7 +81,7 @@ func (rec *Recorder) VerifyEmpty() {
 		return
 	case logItem := <-rec.ch:
 		timer.Stop()
-		rec.t.Fatalf("unexpected logs: %s", logItem)
+		require.FailNow(rec.t, "unexpected logs", "%s", logItem)
 	}
 }
 
@@ -94,7 +94,8 @@ func (rec *Recorder) verify(sortLogs bool, msg string, logs []string) {
 			timer := time.NewTimer(REC_ITEM_TIMEOUT_MS * time.Millisecond)
 			select {
 			case <-timer.C:
-				rec.t.Fatalf("timed out waiting for log item: %s", expectedItem)
+				require.FailNow(rec.t, "timed out waiting for log item",
+					"%s", expectedItem)
 			case logItem := <-rec.ch:
 				timer.Stop()
 				actualLogs = append(actualLogs, logItem)
@@ -121,7 +122,7 @@ func (rec *Recorder) SkipTill(logItem string) {
 	for {
 		select {
 		case <-timer.C:
-			rec.t.Fatalf("timed out waiting for log: %s", logItem)
+			require.FailNow(rec.t, "timed out waiting for log", "%s", logItem)
 			return
 		case l := <-rec.ch:
 			if l == logItem {
@@ -238,13 +239,13 @@ func WaitForWarnings(t *testing.T) {
 func SetupTempDir(t *testing.T) (string, func()) {
 	wd, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("couldn't get the current directory")
+		require.FailNow(t, "couldn't get the current directory")
 		return "", nil // never reached
 	}
 
 	dir, err := ioutil.TempDir(os.TempDir(), "ruletest")
 	if err != nil {
-		t.Fatalf("couldn't create temporary directory")
+		require.FailNow(t, "couldn't create temporary directory")
 		return "", nil // never reached
 	}
 
