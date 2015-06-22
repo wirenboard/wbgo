@@ -243,7 +243,7 @@ func SetupTempDir(t *testing.T) (string, func()) {
 		return "", nil // never reached
 	}
 
-	dir, err := ioutil.TempDir(os.TempDir(), "ruletest")
+	dir, err := ioutil.TempDir(os.TempDir(), "wbgotest")
 	if err != nil {
 		require.FailNow(t, "couldn't create temporary directory")
 		return "", nil // never reached
