@@ -124,10 +124,8 @@ func (s *RPCSuite) publish(topic string, payload interface{}) string {
 
 func (s *RPCSuite) verifyCall(i int, id interface{}) {
 	jsonStr := s.publish("/rpc/v1/SampleRpc/Arith/Multiply/b692040b", objx.Map{
-		"id": id,
-		"params": []objx.Map{
-			objx.Map{"A": i, "B": i + 1},
-		},
+		"id":     id,
+		"params": objx.Map{"A": i, "B": i + 1},
 	})
 	s.verifyMessages(
 		"tst -> /rpc/v1/SampleRpc/Arith/Multiply/b692040b: [%s] (QoS 1)",
@@ -149,10 +147,8 @@ func (s *RPCSuite) TestRPC() {
 
 func (s *RPCSuite) TestErrors() {
 	jsonStr := s.publish("/rpc/v1/SampleRpc/Arith/Divide/b692040b", objx.Map{
-		"id": "0",
-		"params": []objx.Map{
-			objx.Map{"A": 10, "B": 0},
-		},
+		"id":     "0",
+		"params": objx.Map{"A": 10, "B": 0},
 	})
 	s.verifyMessages(
 		"tst -> /rpc/v1/SampleRpc/Arith/Divide/b692040b: [%s] (QoS 1)",
@@ -189,21 +185,8 @@ var rpcErrorTestCases = []struct {
 		},
 	},
 	{
-		name:   "params must be an array",
-		id:     "1",
-		params: objx.Map{},
-		topic:  "/rpc/v1/SampleRpc/Arith/Multiply/b692040b",
-		response: objx.Map{
-			"id": "1",
-			"error": objx.Map{
-				"code":    -32600,
-				"message": "Invalid request",
-			},
-		},
-	},
-	{
 		name:   "no id",
-		params: []objx.Map{},
+		params: objx.Map{},
 		topic:  "/rpc/v1/SampleRpc/Arith/Multiply/b692040b",
 		response: objx.Map{
 			"id": nil,
@@ -214,30 +197,12 @@ var rpcErrorTestCases = []struct {
 		},
 	},
 	{
-		name: "wrong types",
-		id:   "2",
-		params: []objx.Map{
-			objx.Map{"A": "xx", "B": 2},
-		},
-		topic: "/rpc/v1/SampleRpc/Arith/Multiply/b692040b",
+		name:   "wrong types",
+		id:     "1",
+		params: objx.Map{"A": "xx", "B": 2},
+		topic:  "/rpc/v1/SampleRpc/Arith/Multiply/b692040b",
 		response: objx.Map{
-			"id": "2",
-			"error": objx.Map{
-				"code":    -32602,
-				"message": "Invalid params",
-			},
-		},
-	},
-	{
-		name: "wrong number of params",
-		id:   "3",
-		params: []objx.Map{
-			objx.Map{"A": 1, "B": 2},
-			objx.Map{},
-		},
-		topic: "/rpc/v1/SampleRpc/Arith/Multiply/b692040b",
-		response: objx.Map{
-			"id": "3",
+			"id": "1",
 			"error": objx.Map{
 				"code":    -32602,
 				"message": "Invalid params",
@@ -246,11 +211,11 @@ var rpcErrorTestCases = []struct {
 	},
 	{
 		name:   "service not found",
-		id:     "4",
-		params: []objx.Map{},
+		id:     "2",
+		params: objx.Map{},
 		topic:  "/rpc/v1/SampleRpc/NoSuchService/Multiply/b692040b",
 		response: objx.Map{
-			"id": "4",
+			"id": "2",
 			"error": objx.Map{
 				"code":    -32601,
 				"message": "Method not found",
@@ -259,11 +224,11 @@ var rpcErrorTestCases = []struct {
 	},
 	{
 		name:   "service not found",
-		id:     "5",
-		params: []objx.Map{},
+		id:     "3",
+		params: objx.Map{},
 		topic:  "/rpc/v1/SampleRpc/Arith/NoSuchMethod/b692040b",
 		response: objx.Map{
-			"id": "5",
+			"id": "3",
 			"error": objx.Map{
 				"code":    -32601,
 				"message": "Method not found",
@@ -272,7 +237,7 @@ var rpcErrorTestCases = []struct {
 	},
 	{
 		name:  "parse error",
-		id:    "6",
+		id:    "4",
 		raw:   "blabla",
 		topic: "/rpc/v1/SampleRpc/Arith/NoSuchMethod/b692040b",
 		response: objx.Map{
@@ -284,14 +249,12 @@ var rpcErrorTestCases = []struct {
 		},
 	},
 	{
-		name: "application error without code",
-		id:   "7",
-		params: []objx.Map{
-			objx.Map{"A": 10, "B": 0},
-		},
-		topic: "/rpc/v1/SampleRpc/Arith/Divide/b692040b",
+		name:   "application error without code",
+		id:     "5",
+		params: objx.Map{"A": 10, "B": 0},
+		topic:  "/rpc/v1/SampleRpc/Arith/Divide/b692040b",
 		response: objx.Map{
-			"id": "7",
+			"id": "5",
 			"error": objx.Map{
 				"code":    -1,
 				"message": "divide by zero",
@@ -300,11 +263,11 @@ var rpcErrorTestCases = []struct {
 	},
 	{
 		name:   "application error with code",
-		id:     "8",
-		params: []objx.Map{objx.Map{}},
+		id:     "6",
+		params: objx.Map{},
 		topic:  "/rpc/v1/SampleRpc/Arith/MakeAnError/b692040b",
 		response: objx.Map{
-			"id": "8",
+			"id": "6",
 			"error": objx.Map{
 				"code":    -42,
 				"message": "app error with code",

@@ -406,10 +406,7 @@ func (server *MQTTRPCServer) parseRequest(payload string, target interface{}) (i
 		return
 	}
 
-	// see whether params are array to distinguish between
-	// invalidRequestError and invalidParamsError
-	var p []interface{}
-	if err = json.Unmarshal(*req.Params, &p); err != nil {
+	if err = json.Unmarshal(*req.Params, target); err != nil {
 		// check whether we have valid JSON; it's not quite
 		// clear whetherjson.RawMessage resulting from JSON
 		// unmarshalling may contain invalid JSON, but's let's
@@ -423,21 +420,6 @@ func (server *MQTTRPCServer) parseRequest(payload string, target interface{}) (i
 			return
 		}
 
-		Debug.Printf("rpc: params is not an array")
-		err = invalidRequestError
-		return
-	}
-
-	// make sure params contain just one argument
-	if len(p) != 1 {
-		Debug.Printf("rpc: more than single param")
-		err = invalidParamsError
-		return
-	}
-
-	var params [1]interface{}
-	params[0] = target
-	if err = json.Unmarshal(*req.Params, &params); err != nil {
 		// wrong params
 		Debug.Printf("rpc: wrong params")
 		err = invalidParamsError
