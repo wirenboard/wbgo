@@ -207,7 +207,7 @@ func suitableMethods(typ reflect.Type, reportErr bool) map[string]*methodType {
 		// Method needs three ins: receiver, *args, *reply.
 		if mtype.NumIn() != 3 {
 			if reportErr {
-				log.Println("method", mname, "has wrong number of ins:", mtype.NumIn())
+				Error.Println("method", mname, "has wrong number of ins:", mtype.NumIn())
 			}
 			continue
 		}
@@ -215,7 +215,7 @@ func suitableMethods(typ reflect.Type, reportErr bool) map[string]*methodType {
 		argType := mtype.In(1)
 		if !isExportedOrBuiltinType(argType) {
 			if reportErr {
-				log.Println(mname, "argument type not exported:", argType)
+				Error.Println(mname, "argument type not exported:", argType)
 			}
 			continue
 		}
@@ -223,28 +223,28 @@ func suitableMethods(typ reflect.Type, reportErr bool) map[string]*methodType {
 		replyType := mtype.In(2)
 		if replyType.Kind() != reflect.Ptr {
 			if reportErr {
-				log.Println("method", mname, "reply type not a pointer:", replyType)
+				Error.Println("method", mname, "reply type not a pointer:", replyType)
 			}
 			continue
 		}
 		// Reply type must be exported.
 		if !isExportedOrBuiltinType(replyType) {
 			if reportErr {
-				log.Println("method", mname, "reply type not exported:", replyType)
+				Error.Println("method", mname, "reply type not exported:", replyType)
 			}
 			continue
 		}
 		// Method needs one out.
 		if mtype.NumOut() != 1 {
 			if reportErr {
-				log.Println("method", mname, "has wrong number of outs:", mtype.NumOut())
+				Error.Println("method", mname, "has wrong number of outs:", mtype.NumOut())
 			}
 			continue
 		}
 		// The return type of the method must be error.
 		if returnType := mtype.Out(0); returnType != typeOfError {
 			if reportErr {
-				log.Println("method", mname, "returns", returnType.String(), "not error")
+				Error.Println("method", mname, "returns", returnType.String(), "not error")
 			}
 			continue
 		}
