@@ -5,6 +5,7 @@ import (
 	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
 	"math/rand"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -14,11 +15,13 @@ const (
 )
 
 type PahoMQTTClient struct {
+	sync.Mutex
 	innerClient     *MQTT.Client
 	waitForRetained bool
 	ready           chan struct{}
 	stopped         chan struct{}
 	tokens          chan MQTT.Token
+	started         bool
 }
 
 func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *PahoMQTTClient) {
@@ -29,11 +32,12 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 	clientID = fmt.Sprintf("%s-%s-%d", clientID, hostname, os.Getpid())
 	opts := MQTT.NewClientOptions().AddBroker(server).SetClientID(clientID)
 	client = &PahoMQTTClient{
-		MQTT.NewClient(opts),
-		waitForRetained,
-		make(chan struct{}),
-		make(chan struct{}),
-		make(chan MQTT.Token, TOKEN_QUEUE_LEN),
+		innerClient:     MQTT.NewClient(opts),
+		waitForRetained: waitForRetained,
+		ready:           make(chan struct{}),
+		stopped:         make(chan struct{}),
+		tokens:          make(chan MQTT.Token, TOKEN_QUEUE_LEN),
+		started:         false,
 	}
 	return
 }
@@ -85,6 +89,12 @@ func (client *PahoMQTTClient) WaitForReady() <-chan struct{} {
 }
 
 func (client *PahoMQTTClient) Start() {
+	client.Lock()
+	defer client.Unlock()
+	if client.started {
+		return
+	}
+	client.started = true
 	if token := client.innerClient.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
@@ -104,6 +114,13 @@ func (client *PahoMQTTClient) Start() {
 }
 
 func (client *PahoMQTTClient) Stop() {
+	// FIXME: restarting the client may not work properly
+	client.Lock()
+	defer client.Unlock()
+	if !client.started {
+		return
+	}
+	client.started = false
 	client.innerClient.Disconnect(DISCONNECT_WAIT_MS)
 	client.stopped <- struct{}{}
 }
@@ -117,6 +134,7 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 func (client *PahoMQTTClient) subscribe(callback MQTTMessageHandler, topics ...string) MQTT.Token {
 	filters := make(map[string]byte)
 	for _, topic := range topics {
+		Debug.Printf("SUB: %s", topic)
 		filters[topic] = 2
 	}
 
