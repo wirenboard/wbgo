@@ -41,7 +41,10 @@ type DeferredList struct {
 }
 
 func NewDeferredList(executor func(func())) *DeferredList {
-	return &DeferredList{fns: make([]func(), 0, DEFERRED_CAPACITY)}
+	return &DeferredList{
+		fns:      make([]func(), 0, DEFERRED_CAPACITY),
+		executor: executor,
+	}
 }
 
 func (dl *DeferredList) MaybeDefer(thunk func()) {
