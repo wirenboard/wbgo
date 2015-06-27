@@ -3,6 +3,7 @@ package wbgo
 import (
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 )
 
@@ -87,4 +88,18 @@ func Truename(filePath string) (string, error) {
 		return filePath, err
 	}
 	return filepath.Clean(p), nil
+}
+
+// IsSubpath returns true if maybeSubpath is a subpath
+// of basepath.
+func IsSubpath(basepath, maybeSubpath string) bool {
+	rel, err := filepath.Rel(basepath, maybeSubpath)
+	if err != nil {
+		return false
+	}
+	if strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		// not a subpath if "../" has to be used for the relative path
+		return false
+	}
+	return true
 }
