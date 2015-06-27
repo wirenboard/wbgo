@@ -64,11 +64,12 @@ func (dl *DeferredList) MaybeDefer(thunk func()) {
 
 func (dl *DeferredList) Ready() {
 	dl.Lock()
-	defer dl.Unlock()
-	for _, fn := range dl.fns {
+	fns := dl.fns
+	dl.fns = nil
+	dl.Unlock()
+	for _, fn := range fns {
 		fn()
 	}
-	dl.fns = nil
 }
 
 // Truename returns the shortest absolute pathname
