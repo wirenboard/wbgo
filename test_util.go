@@ -292,6 +292,12 @@ func (suite *Suite) WaitFor(pred func() bool) {
 	WaitFor(suite.T(), pred)
 }
 
+func (suite *Suite) Ck(msg string, err error) {
+	if err != nil {
+		suite.Require().Fail(msg, "%s", err)
+	}
+}
+
 // RunSuites runs the specified test suites
 func RunSuites(t *testing.T, suites ...suite.TestingSuite) {
 	for _, s := range suites {
