@@ -70,6 +70,9 @@ func (dl *DeferredList) Ready() {
 
 // Truename returns the shortest absolute pathname
 // leading to the specified existing file.
+// Note that a single file may have multiple
+// hard links or be accessible via multiple bind mounts.
+// Truename doesn't account for these situations.
 func Truename(filePath string) (string, error) {
 	p, err := filepath.EvalSymlinks(filePath)
 	if err != nil {
