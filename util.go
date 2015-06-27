@@ -90,8 +90,8 @@ func Truename(filePath string) (string, error) {
 	return filepath.Clean(p), nil
 }
 
-// IsSubpath returns true if maybeSubpath is a subpath
-// of basepath.
+// IsSubpath returns true if maybeSubpath is a subpath of basepath. It
+// uses filepath to be compatible with os-dependent paths.
 func IsSubpath(basepath, maybeSubpath string) bool {
 	rel, err := filepath.Rel(basepath, maybeSubpath)
 	if err != nil {
