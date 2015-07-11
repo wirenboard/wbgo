@@ -37,6 +37,10 @@ func SetDebuggingEnabled(enable bool) {
 	updateDebugLogger()
 }
 
+func DebuggingEnabled() bool {
+	return debuggingEnabled
+}
+
 func updateDebugLogger() {
 	switch {
 	case !debuggingEnabled:
