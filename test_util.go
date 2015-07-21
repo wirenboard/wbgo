@@ -47,6 +47,13 @@ func NewFixture(t *testing.T) *Fixture {
 	return &Fixture{t}
 }
 
+func (f *Fixture) Ckf(msg string, err error) {
+	// named Ckf() to avoid name conflicts in suites
+	if err != nil {
+		require.FailNow(f.t, msg, "%s", err)
+	}
+}
+
 type Recorder struct {
 	*Fixture
 	ch            chan string
