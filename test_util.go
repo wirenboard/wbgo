@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"sync"
 	"testing"
@@ -92,12 +93,13 @@ func (rec *Recorder) VerifyEmpty() {
 	}
 }
 
-func (rec *Recorder) verify(sortLogs bool, msg string, logs []string) {
+func (rec *Recorder) verify(sortLogs bool, msg string, logs []interface{}) {
 	if logs == nil {
 		rec.VerifyEmpty()
 	} else {
-		actualLogs := make([]string, 0, len(logs))
-		for _, expectedItem := range logs {
+		actualLogs := make([]interface{}, 0, len(logs))
+		logs = logs[:]
+		for n, expectedItem := range logs {
 			timer := time.NewTimer(REC_ITEM_TIMEOUT_MS * time.Millisecond)
 			select {
 			case <-timer.C:
@@ -105,22 +107,47 @@ func (rec *Recorder) verify(sortLogs bool, msg string, logs []string) {
 					"%s", expectedItem)
 			case logItem := <-rec.ch:
 				timer.Stop()
+				// If a regular expression is specified and it
+				// matches, replace expected log item with
+				// actual log item. If it doesn't match, replace
+				// it with regular expression source text
+				if n < len(logs) {
+					rx, ok := logs[n].(*regexp.Regexp)
+					if ok {
+						if rx.FindStringIndex(logItem) != nil {
+							logs[n] = logItem
+						} else {
+							logs[n] = rx.String()
+						}
+					}
+				}
 				actualLogs = append(actualLogs, logItem)
 			}
 		}
 		if sortLogs {
-			sort.Strings(logs)
-			sort.Strings(actualLogs)
+			// FIXME: this will fail on regexps
+			strLogs := make([]string, len(logs))
+			for n, log := range logs {
+				strLogs[n] = log.(string)
+			}
+			strActualLogs := make([]string, len(actualLogs))
+			for n, log := range actualLogs {
+				strActualLogs[n] = log.(string)
+			}
+			sort.Strings(strLogs)
+			sort.Strings(strActualLogs)
+			require.Equal(rec.t, strLogs, strActualLogs, msg)
+		} else {
+			require.Equal(rec.t, logs, actualLogs, msg)
 		}
-		require.Equal(rec.t, logs, actualLogs, msg)
 	}
 }
 
-func (rec *Recorder) Verify(logs ...string) {
+func (rec *Recorder) Verify(logs ...interface{}) {
 	rec.verify(false, "rec logs", logs)
 }
 
-func (rec *Recorder) VerifyUnordered(logs ...string) {
+func (rec *Recorder) VerifyUnordered(logs ...interface{}) {
 	rec.verify(true, "rec logs (unordered)", logs)
 }
 
