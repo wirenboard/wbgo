@@ -3,6 +3,7 @@ package wbgo
 import (
 	"fmt"
 	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
+	"log"
 	"math/rand"
 	"os"
 	"sync"
@@ -54,17 +55,15 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 }
 
 func (client *PahoMQTTClient) onConnect(innerClient *MQTT.Client) {
-	Info.Printf("MQTT connection established: %v", client)
+	Info.Printf("MQTT connection established")
 	client.connMtx.Lock()
-	Info.Printf("MQTT connection established(1)")
 	client.connected = true
-	Info.Printf("MQTT connection established(2)")
 	for topic, callbacks := range client.subs {
 		for _, callback := range callbacks {
+			Debug.Printf("RESUB: %s", topic)
 			client.tokens <- client.subscribe(callback, topic)
 		}
 	}
-	Info.Printf("MQTT connection established(3)")
 	client.connMtx.Unlock()
 }
 
@@ -209,4 +208,11 @@ func (client *PahoMQTTClient) Unsubscribe(topics ...string) {
 	}
 	client.connMtx.Unlock()
 	client.innerClient.Unsubscribe(topics...)
+}
+
+func EnableMQTTDebugLog() {
+	MQTT.ERROR = log.New(os.Stdout, "", 0)
+	MQTT.CRITICAL = log.New(os.Stdout, "", 0)
+	MQTT.WARN = log.New(os.Stdout, "", 0)
+	MQTT.DEBUG = log.New(os.Stdout, "", 0)
 }
