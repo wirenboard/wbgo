@@ -14,14 +14,19 @@ const (
 	TOKEN_QUEUE_LEN    = 512
 )
 
+type MQTTSubscriptionMap map[string][]MQTTMessageHandler
+
 type PahoMQTTClient struct {
-	sync.Mutex
+	startMtx        sync.Mutex
+	connMtx         sync.Mutex
 	innerClient     *MQTT.Client
 	waitForRetained bool
 	ready           chan struct{}
 	stopped         chan struct{}
 	tokens          chan MQTT.Token
+	subs            MQTTSubscriptionMap
 	started         bool
+	connected       bool
 }
 
 func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *PahoMQTTClient) {
@@ -30,16 +35,44 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 		hostname = "localhost"
 	}
 	clientID = fmt.Sprintf("%s-%s-%d", clientID, hostname, os.Getpid())
-	opts := MQTT.NewClientOptions().AddBroker(server).SetClientID(clientID)
 	client = &PahoMQTTClient{
-		innerClient:     MQTT.NewClient(opts),
 		waitForRetained: waitForRetained,
 		ready:           make(chan struct{}),
 		stopped:         make(chan struct{}),
 		tokens:          make(chan MQTT.Token, TOKEN_QUEUE_LEN),
+		subs:            make(MQTTSubscriptionMap),
 		started:         false,
+		connected:       false,
 	}
+	opts := MQTT.NewClientOptions().
+		AddBroker(server).
+		SetClientID(clientID).
+		SetOnConnectHandler(client.onConnect).
+		SetConnectionLostHandler(client.onConnectionLost)
+	client.innerClient = MQTT.NewClient(opts)
 	return
+}
+
+func (client *PahoMQTTClient) onConnect(innerClient *MQTT.Client) {
+	Info.Printf("MQTT connection established: %v", client)
+	client.connMtx.Lock()
+	Info.Printf("MQTT connection established(1)")
+	client.connected = true
+	Info.Printf("MQTT connection established(2)")
+	for topic, callbacks := range client.subs {
+		for _, callback := range callbacks {
+			client.tokens <- client.subscribe(callback, topic)
+		}
+	}
+	Info.Printf("MQTT connection established(3)")
+	client.connMtx.Unlock()
+}
+
+func (client *PahoMQTTClient) onConnectionLost(inner *MQTT.Client, err error) {
+	Warn.Printf("MQTT connection lost")
+	client.connMtx.Lock()
+	client.connected = false
+	client.connMtx.Unlock()
 }
 
 func (client *PahoMQTTClient) WaitForReady() <-chan struct{} {
@@ -89,8 +122,8 @@ func (client *PahoMQTTClient) WaitForReady() <-chan struct{} {
 }
 
 func (client *PahoMQTTClient) Start() {
-	client.Lock()
-	defer client.Unlock()
+	client.startMtx.Lock()
+	defer client.startMtx.Unlock()
 	if client.started {
 		return
 	}
@@ -115,8 +148,8 @@ func (client *PahoMQTTClient) Start() {
 
 func (client *PahoMQTTClient) Stop() {
 	// FIXME: restarting the client may not work properly
-	client.Lock()
-	defer client.Unlock()
+	client.startMtx.Lock()
+	defer client.startMtx.Unlock()
 	if !client.started {
 		return
 	}
@@ -148,9 +181,32 @@ func (client *PahoMQTTClient) subscribe(callback MQTTMessageHandler, topics ...s
 }
 
 func (client *PahoMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...string) {
+	client.connMtx.Lock()
+	for _, topic := range topics {
+		subList, found := client.subs[topic]
+		if !found {
+			client.subs[topic] = []MQTTMessageHandler{callback}
+		} else {
+			client.subs[topic] = append(subList, callback)
+		}
+	}
+	if !client.connected {
+		client.connMtx.Unlock()
+		return
+	}
+	client.connMtx.Unlock()
 	client.tokens <- client.subscribe(callback, topics...)
 }
 
 func (client *PahoMQTTClient) Unsubscribe(topics ...string) {
+	client.connMtx.Lock()
+	for _, topic := range topics {
+		delete(client.subs, topic)
+	}
+	if !client.connected {
+		client.connMtx.Unlock()
+		return
+	}
+	client.connMtx.Unlock()
 	client.innerClient.Unsubscribe(topics...)
 }
