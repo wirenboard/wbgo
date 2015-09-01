@@ -67,7 +67,7 @@ func (s *RPCSuite) verifyMessages(items ...interface{}) {
 		return
 	}
 
-	strs := make([]string, 0, len(items))
+	itemsToVerify := make([]interface{}, 0, len(items))
 	for n := 0; n < len(items); {
 		formatStr := items[n].(string)
 		n++
@@ -84,9 +84,9 @@ func (s *RPCSuite) verifyMessages(items ...interface{}) {
 			}
 			args[i] = item
 		}
-		strs = append(strs, fmt.Sprintf(formatStr, args...))
+		itemsToVerify = append(itemsToVerify, fmt.Sprintf(formatStr, args...))
 	}
-	s.Verify(strs...)
+	s.Verify(itemsToVerify...)
 }
 
 func (s *RPCSuite) SetupTest() {
