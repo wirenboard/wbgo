@@ -42,6 +42,7 @@ func NewRpcFixture(t *testing.T, app, service, clientName string, rcvr interface
 		expect = append(expect, f.expectedMessage(clientName, methodName, "1", true))
 	}
 	f.Verify(expect...)
+	f.VerifyEmpty()
 	return f
 }
 
