@@ -2,6 +2,7 @@ package wbgo
 
 import (
 	"fmt"
+	"github.com/stretchr/objx"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"io/ioutil"
@@ -53,6 +54,54 @@ func (f *Fixture) Ckf(msg string, err error) {
 	if err != nil {
 		require.FailNow(f.t, msg, "%s", err)
 	}
+}
+
+type RecMatcherFunc func(item string) bool
+
+type RecMatcher struct {
+	text string
+	fn   RecMatcherFunc
+}
+
+func NewRecMatcher(text string, fn RecMatcherFunc) *RecMatcher {
+	return &RecMatcher{text, fn}
+}
+
+// JSONRecMatcher returns a matcher that matches a first
+// group captured by regular expression rx against JSON
+// value. If rx has no groups, the whole text matched
+// by rx is used
+func JSONRecMatcher(value objx.Map, itemRx string) *RecMatcher {
+	rx := regexp.MustCompile(itemRx)
+	valStr := value.MustJSON()
+	return NewRecMatcher(
+		valStr,
+		func(item string) bool {
+			m := rx.FindStringSubmatch(item)
+			if m == nil {
+				Error.Printf("JSONRecMatcher: regexp mismatch: %s against %s", item, rx)
+				return false
+			}
+			var text string
+			if len(m) > 1 {
+				text = m[1]
+			} else {
+				text = m[0]
+			}
+			actualValue, err := objx.FromJSON(text)
+			if err != nil {
+				Error.Printf("JSONRecMatcher: failed to convert value to JSON: %s", text)
+				return false
+			}
+			actualValueStr := actualValue.MustJSON() // fix key order
+			if valStr != actualValueStr {
+				Error.Printf(
+					"JSON value mismatch: %s (expected) != %s (actual)",
+					valStr, actualValueStr)
+				return false
+			}
+			return true
+		})
 }
 
 type Recorder struct {
@@ -112,12 +161,20 @@ func (rec *Recorder) verify(sortLogs bool, msg string, logs []interface{}) {
 				// actual log item. If it doesn't match, replace
 				// it with regular expression source text
 				if n < len(logs) {
-					rx, ok := logs[n].(*regexp.Regexp)
-					if ok {
+					switch logs[n].(type) {
+					case *regexp.Regexp:
+						rx := expectedItem.(*regexp.Regexp)
 						if rx.FindStringIndex(logItem) != nil {
 							logs[n] = logItem
 						} else {
 							logs[n] = rx.String()
+						}
+					case *RecMatcher:
+						matcher := expectedItem.(*RecMatcher)
+						if matcher.fn(logItem) {
+							logs[n] = logItem
+						} else {
+							logs[n] = matcher.text
 						}
 					}
 				}
