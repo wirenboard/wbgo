@@ -3,6 +3,7 @@ package wbgo
 import (
 	"fmt"
 	"github.com/stretchr/objx"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -59,6 +60,18 @@ func (f *RpcFixture) expectedMessage(from, subtopic, payload string, retained bo
 	return fmt.Sprintf("%s -> %s: [%s] (QoS 1%s)", from, f.topic(subtopic), payload, rtn)
 }
 
+func (f *RpcFixture) expectedJSONMessage(from, subtopic string, payload objx.Map, retained bool) *RecMatcher {
+	rtn := ""
+	if retained {
+		rtn = ", retained"
+	}
+	rx := fmt.Sprintf(`^%s -> %s: \[(.*)\] \(QoS 1%s\)$`,
+		regexp.QuoteMeta(from),
+		regexp.QuoteMeta(f.topic(subtopic)),
+		rtn)
+	return JSONRecMatcher(payload, rx)
+}
+
 func (f *RpcFixture) TearDownRPC() {
 	f.rpc.Stop()
 }
@@ -71,13 +84,12 @@ func (f *RpcFixture) verifyRpcRaw(subtopic string, params, expectedResponse objx
 	}
 	f.id++
 	subtopicWithId := subtopic + "/" + SAMPLE_CLIENT_ID
-	payload := request.MustJSON()
-	f.client.Publish(MQTTMessage{f.topic(subtopicWithId), payload, 1, false})
+	f.client.Publish(MQTTMessage{f.topic(subtopicWithId), request.MustJSON(), 1, false})
 	resp := expectedResponse.Copy()
 	resp["id"] = replyId
 	f.Verify(
-		f.expectedMessage("tst", subtopicWithId, payload, false),
-		f.expectedMessage(f.clientName, subtopicWithId+"/reply", resp.MustJSON(), false))
+		f.expectedJSONMessage("tst", subtopicWithId, request, false),
+		f.expectedJSONMessage(f.clientName, subtopicWithId+"/reply", resp, false))
 }
 
 func (f *RpcFixture) VerifyRpc(subtopic string, params objx.Map, expectedResult interface{}) {
