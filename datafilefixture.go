@@ -73,3 +73,7 @@ func (f *DataFileFixture) WriteDataFile(filename, content string) string {
 	f.Ckf("WriteFile()", ioutil.WriteFile(targetPath, []byte(content), 0777))
 	return targetPath
 }
+
+func (f *DataFileFixture) RmFile(filename string) {
+	f.Ckf("Remove()", os.Remove(f.DataFilePath(filename)))
+}
