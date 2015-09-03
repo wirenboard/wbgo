@@ -38,6 +38,7 @@ type dirWatcherOp struct {
 
 type DirWatcher struct {
 	initMtx   sync.Mutex
+	evMtx     sync.Mutex
 	rx        *regexp.Regexp
 	client    DirWatcherClient
 	watcher   *fsnotify.Watcher
@@ -99,27 +100,33 @@ func (dw *DirWatcher) registerFSEvent(ev fsnotify.Event) {
 	}
 }
 
+func (dw *DirWatcher) processOp(op *dirWatcherOp) {
+	dw.evMtx.Lock()
+	defer dw.evMtx.Unlock()
+	switch op.typ {
+	case DIRWATCHER_OP_CHANGE:
+		Debug.Printf("(re)load: %s", op.path)
+		// need to check whether the file that possibly doesn't
+		// satisfy the loader pattern was explicitly loaded
+		explicit := false
+		if entry, found := dw.loaded[op.path]; found {
+			explicit = entry.explicit
+		}
+		if err := dw.doLoad(op.path, explicit, true); err != nil {
+			Warn.Printf(
+				"warning: failed to load %s: %s", op.path, err)
+		}
+	case DIRWATCHER_OP_REMOVE:
+		Debug.Printf("file removed: %s", op.path)
+		dw.removePath(op.path)
+	default:
+		log.Panicf("invalid loader op %d", op.typ)
+	}
+}
+
 func (dw *DirWatcher) processEvents() {
 	for _, op := range dw.opList {
-		switch op.typ {
-		case DIRWATCHER_OP_CHANGE:
-			Debug.Printf("(re)load: %s", op.path)
-			// need to check whether the file that possibly doesn't
-			// satisfy the loader pattern was explicitly loaded
-			explicit := false
-			if entry, found := dw.loaded[op.path]; found {
-				explicit = entry.explicit
-			}
-			if err := dw.doLoad(op.path, explicit, true); err != nil {
-				Warn.Printf(
-					"warning: failed to load %s: %s", op.path, err)
-			}
-		case DIRWATCHER_OP_REMOVE:
-			Debug.Printf("file removed: %s", op.path)
-			dw.removePath(op.path)
-		default:
-			log.Panicf("invalid loader op %d", op.typ)
-		}
+		dw.processOp(op)
 	}
 	dw.resetOps()
 }
@@ -236,6 +243,8 @@ func (dw *DirWatcher) removePath(filePath string) {
 }
 
 func (dw *DirWatcher) Load(filePath string) error {
+	dw.evMtx.Lock()
+	defer dw.evMtx.Unlock()
 	return dw.doLoad(filePath, true, false)
 }
 
