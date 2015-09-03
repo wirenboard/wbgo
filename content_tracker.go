@@ -4,17 +4,22 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io/ioutil"
+	"sync"
 )
 
 type ContentTracker struct {
+	sync.Mutex
 	hashes map[string]string
 }
 
 func NewContentTracker() *ContentTracker {
-	return &ContentTracker{make(map[string]string)}
+	return &ContentTracker{hashes: make(map[string]string)}
 }
 
 func (tracker *ContentTracker) Track(key, path string) (bool, error) {
+	tracker.Lock()
+	defer tracker.Unlock()
+
 	bs, err := ioutil.ReadFile(path)
 	if err != nil {
 		return false, err
