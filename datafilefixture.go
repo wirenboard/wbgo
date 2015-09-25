@@ -26,6 +26,10 @@ func NewDataFileFixture(t *testing.T) (f *DataFileFixture) {
 
 func (f *DataFileFixture) TearDownDataFiles() {
 	f.rmDataFileDir()
+	err := os.Chdir(f.wd)
+	f.Ckf("Chdir", err)
+}
+
 }
 
 func (f *DataFileFixture) DataFileTempDir() string {
