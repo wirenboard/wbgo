@@ -30,6 +30,8 @@ func (f *DataFileFixture) TearDownDataFiles() {
 	f.Ckf("Chdir", err)
 }
 
+func (f *DataFileFixture) SourceDir() string {
+	return f.wd
 }
 
 func (f *DataFileFixture) DataFileTempDir() string {
