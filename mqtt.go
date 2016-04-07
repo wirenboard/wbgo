@@ -60,7 +60,9 @@ func (client *PahoMQTTClient) onConnect(innerClient *MQTT.Client) {
 	client.connected = true
 	for topic, callbacks := range client.subs {
 		for _, callback := range callbacks {
-			Debug.Printf("RESUB: %s", topic)
+			if DebuggingEnabled() {
+				Debug.Printf("RESUB: %s", topic)
+			}
 			client.tokens <- client.subscribe(callback, topic)
 		}
 	}
@@ -158,7 +160,9 @@ func (client *PahoMQTTClient) Stop() {
 }
 
 func (client *PahoMQTTClient) Publish(message MQTTMessage) {
-	Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
+	if DebuggingEnabled() {
+		Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
+	}
 	client.tokens <- client.innerClient.Publish(
 		message.Topic, message.QoS, message.Retained, message.Payload)
 }
@@ -166,12 +170,16 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 func (client *PahoMQTTClient) subscribe(callback MQTTMessageHandler, topics ...string) MQTT.Token {
 	filters := make(map[string]byte)
 	for _, topic := range topics {
-		Debug.Printf("SUB: %s", topic)
+		if DebuggingEnabled() {
+			Debug.Printf("SUB: %s", topic)
+		}
 		filters[topic] = 2
 	}
 
 	wrappedCallback := func(client *MQTT.Client, msg MQTT.Message) {
-		Debug.Printf("GOT MESSAGE: %s --- %s", msg.Topic(), string(msg.Payload()))
+		if DebuggingEnabled() {
+			Debug.Printf("GOT MESSAGE: %s --- %s", msg.Topic(), string(msg.Payload()))
+		}
 		callback(MQTTMessage{msg.Topic(), string(msg.Payload()),
 			byte(msg.Qos()), msg.Retained()})
 	}

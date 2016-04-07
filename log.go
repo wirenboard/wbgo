@@ -6,6 +6,7 @@ import (
 	"log/syslog"
 	"os"
 	"path"
+	"sync"
 )
 
 var (
@@ -15,6 +16,8 @@ var (
 	Debug            *log.Logger
 	debuggingEnabled bool = false
 	useSyslog             = false
+	keepDebug             = false
+	debugMutex       sync.Mutex
 )
 
 func init() {
@@ -33,16 +36,24 @@ func makeSyslogger(priority syslog.Priority, prefix string) *log.Logger {
 }
 
 func SetDebuggingEnabled(enable bool) {
+	debugMutex.Lock()
 	debuggingEnabled = enable
+	debugMutex.Unlock()
 	updateDebugLogger()
 }
 
 func DebuggingEnabled() bool {
+	debugMutex.Lock()
+	defer debugMutex.Unlock()
 	return debuggingEnabled
 }
 
 func updateDebugLogger() {
+	debugMutex.Lock()
+	defer debugMutex.Unlock()
 	switch {
+	case keepDebug:
+		return
 	case !debuggingEnabled:
 		Debug = log.New(ioutil.Discard, "", 0)
 	case useSyslog:

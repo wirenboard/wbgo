@@ -299,6 +299,8 @@ func SetupTestLogging(t *testing.T) {
 	Warn = log.New(warnTestLog, "WARNING: ", log.Lshortfile)
 	Info = log.New(NewTestLog(t), "INFO: ", log.Lshortfile)
 	Debug = log.New(NewTestLog(t), "DEBUG: ", log.Lshortfile)
+	// make SetDebuggingEnabled() keep Debug
+	keepDebug = true
 }
 
 func EnsureNoErrorsOrWarnings(t *testing.T) {
