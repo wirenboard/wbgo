@@ -61,6 +61,13 @@ func (f *DataFileFixture) ReadSourceDataFile(sourceName string) string {
 	return string(f.readSourceDataFile(sourceName))
 }
 
+func (f *DataFileFixture) CopyModifiedDataFileToTempDir(sourceName, targetName string, edit func(string) string) (targetPath string) {
+	data := string(f.readSourceDataFile(sourceName))
+	targetPath = f.ensureTargetDirs(targetName)
+	f.Ckf("WriteFile", ioutil.WriteFile(targetPath, []byte(edit(data)), 0777))
+	return
+}
+
 func (f *DataFileFixture) CopyDataFileToTempDir(sourceName, targetName string) (targetPath string) {
 	data := f.readSourceDataFile(sourceName)
 	targetPath = f.ensureTargetDirs(targetName)
