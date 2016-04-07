@@ -282,7 +282,16 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, va
 	}
 	devName := dev.Name()
 	nextOrder := drv.nextOrder[devName]
+	units := ""
+	if strings.Contains(paramType, ":") {
+		parts := strings.SplitN(paramType, ":", 2)
+		paramType, units = parts[0], parts[1]
+	}
 	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "type"), paramType)
+	if units != "" {
+		// FIXME (untested + unpretty)
+		drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "units"), units)
+	}
 	if readOnly {
 		drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "readonly"), "1")
 	}
