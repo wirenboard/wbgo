@@ -49,7 +49,7 @@ type DeviceModel interface {
 	Name() string
 	Title() string
 	Observe(observer DeviceObserver)
-	// AcceptOnValue accepts the specified control value sent via an MQTT value topic
+	// AcceptValue accepts the specified control value sent via an MQTT value topic
 	// (not .../on). For local devices, that can be a retained value, for external
 	// devices, the current control value
 	AcceptValue(name, value string)
