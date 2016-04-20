@@ -293,6 +293,8 @@ var errorTestLog, warnTestLog *TestLog
 // SetupTestLogging sets up the logging output in such way
 // that it's only shown if the current test fails.
 func SetupTestLogging(t *testing.T) {
+	debugMutex.Lock()
+	defer debugMutex.Unlock()
 	errorTestLog = NewTestLog(t)
 	Error = log.New(errorTestLog, "ERROR: ", log.Lshortfile)
 	warnTestLog = NewTestLog(t)
