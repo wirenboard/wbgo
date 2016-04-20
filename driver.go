@@ -131,7 +131,7 @@ type Driver struct {
 	client                 MQTTClient
 	eventCh                chan func()
 	handleMessageCh        chan func()
-	quit                   chan struct{}
+	quit                   chan chan struct{}
 	poll                   chan time.Time
 	deviceMap              map[string]DeviceModel // TBD: wrap DeviceModel instead of using parallel structures
 	nextOrder              map[string]int
@@ -156,7 +156,7 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		// that is passed back to the model
 		eventCh:         make(chan func(), EVENT_QUEUE_LEN),
 		handleMessageCh: make(chan func(), EVENT_QUEUE_LEN),
-		quit:            make(chan struct{}),
+		quit:            make(chan chan struct{}),
 		poll:            make(chan time.Time),
 		deviceMap:       make(map[string]DeviceModel),
 		nextOrder:       make(map[string]int),
@@ -503,13 +503,13 @@ func (drv *Driver) Start() error {
 				drv.whenReady.Ready()
 				readyCh = nil
 				drv.ready = true
-			case <-drv.quit:
-				Debug.Printf("Driver: stopping")
+			case quitCh := <-drv.quit:
 				if ticker != nil {
 					ticker.Stop()
 				}
 				drv.model.Stop()
 				drv.client.Stop()
+				close(quitCh)
 				return
 			case <-pollChannel:
 				drv.model.Poll()
@@ -529,5 +529,7 @@ func (drv *Driver) Stop() {
 	}
 	drv.active = false
 	Debug.Printf("Driver.Stop()")
-	drv.quit <- struct{}{}
+	ch := make(chan struct{})
+	drv.quit <- ch
+	<-ch
 }
