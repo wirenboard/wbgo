@@ -358,8 +358,10 @@ func (drv *Driver) ensureExtDevice(deviceName string) (ExternalDeviceModel, erro
 
 func (drv *Driver) handleIncomingControlOnValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>/on
-	Debug.Printf("handleIncomingMQTTValue() topic: %s", msg.Topic)
-	Debug.Printf("MSG: %s\n", msg.Payload)
+	if DebuggingEnabled() {
+		Debug.Printf("handleIncomingMQTTValue() topic: %s", msg.Topic)
+		Debug.Printf("MSG: %s\n", msg.Payload)
+	}
 	parts := strings.Split(msg.Topic, "/")
 	deviceName := parts[2]
 	controlName := parts[4]
