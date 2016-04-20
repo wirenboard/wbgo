@@ -7,16 +7,19 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 )
 
 var (
-	Error            *log.Logger
-	Warn             *log.Logger
-	Info             *log.Logger
-	Debug            *log.Logger
-	debuggingEnabled bool = false
-	useSyslog             = false
-	keepDebug             = false
+	Error *log.Logger
+	Warn  *log.Logger
+	Info  *log.Logger
+	Debug *log.Logger
+	// we want debug flag access to be FAST so we use sync.atomic
+	// to access it
+	debuggingEnabled int32 = 0
+	useSyslog              = false
+	keepDebug              = false
 	debugMutex       sync.Mutex
 )
 
@@ -36,25 +39,26 @@ func makeSyslogger(priority syslog.Priority, prefix string) *log.Logger {
 }
 
 func SetDebuggingEnabled(enable bool) {
-	debugMutex.Lock()
-	debuggingEnabled = enable
-	debugMutex.Unlock()
+	if enable {
+		atomic.StoreInt32(&debuggingEnabled, 1)
+	} else {
+		atomic.StoreInt32(&debuggingEnabled, 0)
+	}
 	updateDebugLogger()
 }
 
 func DebuggingEnabled() bool {
-	debugMutex.Lock()
-	defer debugMutex.Unlock()
-	return debuggingEnabled
+	return atomic.LoadInt32(&debuggingEnabled) != 0
 }
 
 func updateDebugLogger() {
+	// avoid debug flag / logger inconsitency
 	debugMutex.Lock()
 	defer debugMutex.Unlock()
 	switch {
 	case keepDebug:
 		return
-	case !debuggingEnabled:
+	case !DebuggingEnabled():
 		Debug = log.New(ioutil.Discard, "", 0)
 	case useSyslog:
 		Debug = makeSyslogger(syslog.LOG_DAEMON|syslog.LOG_DEBUG, "DEBUG: ")
