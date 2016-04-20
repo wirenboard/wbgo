@@ -125,6 +125,21 @@ type controlKey struct {
 	controlName string
 }
 
+type driverTopic struct {
+	ReceivedValue string
+	DeviceName    string
+	ControlName   string
+	Dev           DeviceModel
+	Ready         bool
+	Skip          bool
+}
+
+func (drvTopic *driverTopic) resetDevice() {
+	drvTopic.Dev = nil
+	drvTopic.Ready = false
+	drvTopic.Skip = false
+}
+
 // Driver transfers data between Model with MQTTClient
 type Driver struct {
 	model                  Model
@@ -137,7 +152,7 @@ type Driver struct {
 	nextOrder              map[string]int
 	controlList            map[string][]string
 	retainMap              map[string]bool
-	receivedValues         map[string]string
+	topics                 map[string]*driverTopic
 	autoPoll               bool
 	pollIntervalMs         int
 	acceptsExternalDevices bool
@@ -162,7 +177,7 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		nextOrder:       make(map[string]int),
 		retainMap:       make(map[string]bool),
 		controlList:     make(map[string][]string),
-		receivedValues:  make(map[string]string),
+		topics:          make(map[string]*driverTopic),
 		autoPoll:        true,
 		pollIntervalMs:  DEFAULT_POLL_INTERVAL_MS,
 	}
@@ -224,7 +239,14 @@ func (drv *Driver) publishOnValue(dev DeviceModel, controlName, value string) {
 	})
 }
 
+func (drv *Driver) clearTopicDevCache() {
+	for _, drvTopic := range drv.topics {
+		drvTopic.resetDevice()
+	}
+}
+
 func (drv *Driver) RemoveDevice(dev DeviceModel) {
+	drv.clearTopicDevCache()
 	name := dev.Name()
 	dev, found := drv.deviceMap[name]
 	if !found {
@@ -242,6 +264,7 @@ func (drv *Driver) RemoveDevice(dev DeviceModel) {
 }
 
 func (drv *Driver) OnNewDevice(dev DeviceModel) {
+	drv.clearTopicDevCache()
 	drv.RemoveDevice(dev)
 	drv.deviceMap[dev.Name()] = dev
 	if _, ext := dev.(ExternalDeviceModel); !ext {
@@ -275,9 +298,9 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, va
 	controlTopic := drv.controlTopic(dev, controlName)
 	if drv.active && dev.IsVirtual() && retain {
 		// keep value in the case of new virtual device definition in the running driver
-		oldValue, found := drv.receivedValues[controlTopic]
+		drvTopic, found := drv.topics[controlTopic]
 		if found {
-			value = oldValue
+			value = drvTopic.ReceivedValue
 		}
 	}
 	devName := dev.Name()
@@ -388,30 +411,42 @@ func (drv *Driver) handleDeviceTitle(msg MQTTMessage) {
 
 func (drv *Driver) handleIncomingControlValue(msg MQTTMessage) {
 	// /devices/<name>/controls/<control>
-	drv.receivedValues[msg.Topic] = msg.Payload
-	parts := strings.Split(msg.Topic, "/")
-	deviceName := parts[2]
-	controlName := parts[4]
-	var dev DeviceModel
-	var err error
-	if drv.ready {
-		dev, err = drv.ensureExtDevice(deviceName)
+	drvTopic := drv.topics[msg.Topic]
+	if drvTopic == nil {
+		parts := strings.Split(msg.Topic, "/")
+		drvTopic = &driverTopic{
+			ReceivedValue: msg.Payload,
+			DeviceName:    parts[2],
+			ControlName:   parts[4],
+			Ready:         drv.ready,
+			Skip:          false,
+		}
+		drv.topics[msg.Topic] = drvTopic
 	} else {
-		// not ready yet - may accept retained values for local devices
-		dev, err = drv.ensureDevice(deviceName)
+		drvTopic.ReceivedValue = msg.Payload
 	}
-	if err != nil {
-		Error.Printf("Cannot register external device %s: %s", deviceName, err)
-	}
-	if dev == nil { // nil means no devices are currently ready to accept the value
-		return
-	}
-	localDev, ok := dev.(LocalDeviceModel)
-	if ok && !localDev.IsVirtual() {
+	if drvTopic.Dev == nil || drvTopic.Ready != drv.ready {
+		drvTopic.Ready = drv.ready
+		var err error
+		if drv.ready {
+			drvTopic.Dev, err = drv.ensureExtDevice(drvTopic.DeviceName)
+		} else {
+			// not ready yet - may accept retained values for local devices
+			drvTopic.Dev, err = drv.ensureDevice(drvTopic.DeviceName)
+		}
+		if err != nil {
+			Error.Printf("Cannot register external device %s: %s", drvTopic.DeviceName, err)
+		}
+		if drvTopic.Dev == nil { // nil means no devices are currently ready to accept the value
+			return
+		}
+		localDev, ok := drvTopic.Dev.(LocalDeviceModel)
 		// devices that are connected to hardware must not pick up retained values
-		return
+		drvTopic.Skip = ok && !localDev.IsVirtual()
 	}
-	dev.AcceptValue(controlName, msg.Payload)
+	if !drvTopic.Skip {
+		drvTopic.Dev.AcceptValue(drvTopic.ControlName, msg.Payload)
+	}
 }
 
 func (drv *Driver) handleExternalControlType(msg MQTTMessage) {
