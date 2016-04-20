@@ -1,7 +1,8 @@
-package wbgo
+package testutils
 
 import (
 	"fmt"
+	"github.com/contactless/wbgo"
 	"github.com/stretchr/objx"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -79,7 +80,7 @@ func JSONRecMatcher(value objx.Map, itemRx string) *RecMatcher {
 		func(item string) bool {
 			m := rx.FindStringSubmatch(item)
 			if m == nil {
-				Error.Printf("JSONRecMatcher: regexp mismatch: %s against %s", item, rx)
+				wbgo.Error.Printf("JSONRecMatcher: regexp mismatch: %s against %s", item, rx)
 				return false
 			}
 			var text string
@@ -90,12 +91,12 @@ func JSONRecMatcher(value objx.Map, itemRx string) *RecMatcher {
 			}
 			actualValue, err := objx.FromJSON(text)
 			if err != nil {
-				Error.Printf("JSONRecMatcher: failed to convert value to JSON: %s", text)
+				wbgo.Error.Printf("JSONRecMatcher: failed to convert value to JSON: %s", text)
 				return false
 			}
 			actualValueStr := actualValue.MustJSON() // fix key order
 			if valStr != actualValueStr {
-				Error.Printf(
+				wbgo.Error.Printf(
 					"JSON value mismatch: %s (expected) != %s (actual)",
 					valStr, actualValueStr)
 				return false
@@ -293,16 +294,13 @@ var errorTestLog, warnTestLog *TestLog
 // SetupTestLogging sets up the logging output in such way
 // that it's only shown if the current test fails.
 func SetupTestLogging(t *testing.T) {
-	debugMutex.Lock()
-	defer debugMutex.Unlock()
 	errorTestLog = NewTestLog(t)
-	Error = log.New(errorTestLog, "ERROR: ", log.Lshortfile)
+	wbgo.Error = log.New(errorTestLog, "ERROR: ", log.Lshortfile)
 	warnTestLog = NewTestLog(t)
-	Warn = log.New(warnTestLog, "WARNING: ", log.Lshortfile)
-	Info = log.New(NewTestLog(t), "INFO: ", log.Lshortfile)
-	Debug = log.New(NewTestLog(t), "DEBUG: ", log.Lshortfile)
-	// make SetDebuggingEnabled() keep Debug
-	keepDebug = true
+	wbgo.Warn = log.New(warnTestLog, "WARNING: ", log.Lshortfile)
+	wbgo.Info = log.New(NewTestLog(t), "INFO: ", log.Lshortfile)
+	// keep=true to make SetDebuggingEnabled() keep Debug
+	wbgo.SetDebugLogger(log.New(NewTestLog(t), "DEBUG: ", log.Lshortfile), true)
 }
 
 func EnsureNoErrorsOrWarnings(t *testing.T) {

@@ -51,6 +51,13 @@ func DebuggingEnabled() bool {
 	return atomic.LoadInt32(&debuggingEnabled) != 0
 }
 
+func SetDebugLogger(logger *log.Logger, keep bool) {
+	debugMutex.Lock()
+	Debug = logger
+	keepDebug = keep
+	debugMutex.Unlock()
+}
+
 func updateDebugLogger() {
 	// avoid debug flag / logger inconsitency
 	debugMutex.Lock()

@@ -1,25 +1,27 @@
-package wbgo
+package wbgo_test
 
 import (
+	. "github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
 func TestFakeMQTT(t *testing.T) {
-	broker := NewFakeMQTTBroker(t, nil)
+	broker := testutils.NewFakeMQTTBroker(t, nil)
 
 	c1 := broker.MakeClient("c1")
 	c1.Start()
 	c1.Subscribe(func(message MQTTMessage) {
-		broker.Rec("message for c1: %s", FormatMQTTMessage(message))
+		broker.Rec("message for c1: %s", testutils.FormatMQTTMessage(message))
 	}, "/some/topic")
 
 	c2 := broker.MakeClient("c2")
 	c2.Start()
 	c2.Subscribe(func(message MQTTMessage) {
-		broker.Rec("(some) message for c2: %s", FormatMQTTMessage(message))
+		broker.Rec("(some) message for c2: %s", testutils.FormatMQTTMessage(message))
 	}, "/some/topic")
 	c2.Subscribe(func(message MQTTMessage) {
-		broker.Rec("(another) message for c2: %s", FormatMQTTMessage(message))
+		broker.Rec("(another) message for c2: %s", testutils.FormatMQTTMessage(message))
 	}, "/another/topic")
 
 	c1.Publish(MQTTMessage{"/some/topic", "somemsg", 1, true})

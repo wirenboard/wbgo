@@ -1,8 +1,10 @@
-package wbgo
+package wbgo_test
 
 import (
 	"errors"
 	"fmt"
+	. "github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"github.com/stretchr/objx"
 	"strconv"
 	"strings"
@@ -52,9 +54,9 @@ func (*Arith) MakeAnError(args *struct{}, r *int) error {
 }
 
 type RPCSuite struct {
-	Suite
-	*FakeMQTTFixture
-	client *FakeMQTTClient
+	testutils.Suite
+	*testutils.FakeMQTTFixture
+	client *testutils.FakeMQTTClient
 	rpc    *MQTTRPCServer
 }
 
@@ -91,7 +93,7 @@ func (s *RPCSuite) verifyMessages(items ...interface{}) {
 
 func (s *RPCSuite) SetupTest() {
 	s.Suite.SetupTest()
-	s.FakeMQTTFixture = NewFakeMQTTFixture(s.T())
+	s.FakeMQTTFixture = testutils.NewFakeMQTTFixture(s.T())
 	s.rpc = NewMQTTRPCServer("SampleRpc", s.Broker.MakeClient("samplerpc"))
 	if err := s.rpc.Register(new(Arith)); err != nil {
 		s.Require().Fail("registration error", "%s", err)
@@ -305,5 +307,5 @@ func (s *RPCSuite) TestRequestErrors() {
 }
 
 func TestRPCSuite(t *testing.T) {
-	RunSuites(t, new(RPCSuite))
+	testutils.RunSuites(t, new(RPCSuite))
 }

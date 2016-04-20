@@ -1,4 +1,3 @@
-// FIXME: !!! TBD: !!! On* stuff should only be called in the context of primary goroutine.
 package wbgo
 
 import (
@@ -279,10 +278,15 @@ func (drv *Driver) OnNewDevice(dev DeviceModel) {
 	dev.Observe(drv)
 }
 
+// var XXXStopIt = false
+
 // wrapMessageHandler wraps the message function so that it's run in
 // the driver's primary goroutine
 func (drv *Driver) wrapMessageHandler(handler MQTTMessageHandler) MQTTMessageHandler {
 	return func(msg MQTTMessage) {
+		// if XXXStopIt {
+		// 	return //////
+		// }
 		drv.HandleMessageSync(func() {
 			handler(msg)
 		})

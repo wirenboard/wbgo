@@ -1,7 +1,8 @@
-package wbgo
+package testutils
 
 import (
 	"fmt"
+	"github.com/contactless/wbgo"
 	"strings"
 	"sync"
 	"testing"
@@ -25,7 +26,7 @@ func topicMatch(pattern string, topic string) bool {
 	return topicPartsMatch(strings.Split(pattern, "/"), strings.Split(topic, "/"))
 }
 
-func FormatMQTTMessage(message MQTTMessage) string {
+func FormatMQTTMessage(message wbgo.MQTTMessage) string {
 	suffix := ""
 	if message.Retained {
 		suffix = ", retained"
@@ -67,7 +68,7 @@ func (broker *FakeMQTTBroker) SetReady() {
 	broker.readyChannels = nil
 }
 
-func (broker *FakeMQTTBroker) Publish(origin string, message MQTTMessage) {
+func (broker *FakeMQTTBroker) Publish(origin string, message wbgo.MQTTMessage) {
 	broker.Lock()
 	defer broker.Unlock()
 	broker.Rec("%s -> %s: %s", origin, message.Topic, FormatMQTTMessage(message))
@@ -121,7 +122,7 @@ func (broker *FakeMQTTBroker) MakeClient(id string) (client *FakeMQTTClient) {
 		id:          id,
 		started:     false,
 		broker:      broker,
-		callbackMap: make(map[string][]MQTTMessageHandler),
+		callbackMap: make(map[string][]wbgo.MQTTMessageHandler),
 		ready:       make(chan struct{}),
 	}
 	if broker.waitForRetained {
@@ -135,11 +136,11 @@ type FakeMQTTClient struct {
 	id          string
 	started     bool
 	broker      *FakeMQTTBroker
-	callbackMap map[string][]MQTTMessageHandler
+	callbackMap map[string][]wbgo.MQTTMessageHandler
 	ready       chan struct{}
 }
 
-func (client *FakeMQTTClient) receive(message MQTTMessage) {
+func (client *FakeMQTTClient) receive(message wbgo.MQTTMessage) {
 	client.Lock()
 	defer client.Unlock()
 	for topic, handlers := range client.callbackMap {
@@ -178,12 +179,12 @@ func (client *FakeMQTTClient) ensureStarted() {
 	}
 }
 
-func (client *FakeMQTTClient) Publish(message MQTTMessage) {
+func (client *FakeMQTTClient) Publish(message wbgo.MQTTMessage) {
 	client.ensureStarted()
 	client.broker.Publish(client.id, message)
 }
 
-func (client *FakeMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...string) {
+func (client *FakeMQTTClient) Subscribe(callback wbgo.MQTTMessageHandler, topics ...string) {
 	client.Lock()
 	defer client.Unlock()
 	client.ensureStarted()
@@ -193,7 +194,7 @@ func (client *FakeMQTTClient) Subscribe(callback MQTTMessageHandler, topics ...s
 		if found {
 			client.callbackMap[topic] = append(handlerList, callback)
 		} else {
-			client.callbackMap[topic] = []MQTTMessageHandler{callback}
+			client.callbackMap[topic] = []wbgo.MQTTMessageHandler{callback}
 		}
 	}
 }

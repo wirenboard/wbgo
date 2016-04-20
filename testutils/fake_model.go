@@ -1,25 +1,26 @@
-package wbgo
+package testutils
 
 import (
+	"github.com/contactless/wbgo"
 	"sort"
 	"testing"
 )
 
 type FakeModel struct {
 	*Recorder
-	ModelBase
+	wbgo.ModelBase
 	devices map[string]FakeDev
 	started bool
 }
 
 type FakeDev interface {
-	DeviceModel
+	wbgo.DeviceModel
 	GetValue(name string) string
 	GetType(name string) string
 }
 
 type FakeDevice struct {
-	DeviceBase
+	wbgo.DeviceBase
 	model       *FakeModel
 	paramTypes  map[string]string
 	paramValues map[string]string
@@ -54,7 +55,7 @@ func (model *FakeModel) Start() error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		dev, ok := model.devices[name].(LocalDeviceModel)
+		dev, ok := model.devices[name].(wbgo.LocalDeviceModel)
 		if ok {
 			model.Observer.OnNewDevice(dev)
 			dev.(*FakeLocalDevice).QueryParams()
@@ -100,7 +101,7 @@ func (model *FakeModel) MakeLocalVirtualDevice(name string, title string,
 	return model.makeLocalDevice(name, title, paramTypes, true)
 }
 
-func (model *FakeModel) AddExternalDevice(name string) (ExternalDeviceModel, error) {
+func (model *FakeModel) AddExternalDevice(name string) (wbgo.ExternalDeviceModel, error) {
 	dev := &FakeExtDevice{*newFakeDevice(model, name, name)}
 	model.devices[name] = dev
 	return dev, nil

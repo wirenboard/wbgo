@@ -1,4 +1,4 @@
-package wbgo
+package testutils
 
 import (
 	"io/ioutil"

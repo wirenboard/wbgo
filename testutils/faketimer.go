@@ -1,6 +1,7 @@
-package wbgo
+package testutils
 
 import (
+	"github.com/contactless/wbgo"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
@@ -24,7 +25,7 @@ func (fixture *FakeTimerFixture) ResetTimerIndex() {
 	fixture.nextTimerId = 1
 }
 
-func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, periodic bool) Timer {
+func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, periodic bool) wbgo.Timer {
 	if id < 0 {
 		id = fixture.nextTimerId
 		fixture.nextTimerId++
@@ -47,11 +48,11 @@ func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, p
 	return timer
 }
 
-func (fixture *FakeTimerFixture) NewFakeTimer(d time.Duration) Timer {
+func (fixture *FakeTimerFixture) NewFakeTimer(d time.Duration) wbgo.Timer {
 	return fixture.NewFakeTimerOrTicker(-1, d, false)
 }
 
-func (fixture *FakeTimerFixture) NewFakeTicker(d time.Duration) Timer {
+func (fixture *FakeTimerFixture) NewFakeTicker(d time.Duration) wbgo.Timer {
 	return fixture.NewFakeTimerOrTicker(-1, d, true)
 }
 

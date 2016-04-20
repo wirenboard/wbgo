@@ -1,22 +1,24 @@
-package wbgo
+package wbgo_test
 
 import (
 	"fmt"
+	. "github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
 type DriverSuiteBase struct {
-	Suite
-	*FakeMQTTFixture
-	model  *FakeModel
-	client *FakeMQTTClient
+	testutils.Suite
+	*testutils.FakeMQTTFixture
+	model  *testutils.FakeModel
+	client *testutils.FakeMQTTClient
 	driver *Driver
 }
 
 func (s *DriverSuiteBase) SetupTest() {
 	s.Suite.SetupTest()
-	s.FakeMQTTFixture = NewFakeMQTTFixture(s.T())
-	s.model = NewFakeModel(s.T())
+	s.FakeMQTTFixture = testutils.NewFakeMQTTFixture(s.T())
+	s.model = testutils.NewFakeModel(s.T())
 
 	s.client = s.Broker.MakeClient("tst")
 	s.client.Start()
@@ -30,24 +32,24 @@ func (s *DriverSuiteBase) TearDownTest() {
 	s.Suite.TearDownTest()
 }
 
-func (s *DriverSuiteBase) createLocalDevice() *FakeLocalDevice {
+func (s *DriverSuiteBase) createLocalDevice() *testutils.FakeLocalDevice {
 	return s.model.MakeLocalVirtualDevice("somedev", "SomeDev", map[string]string{
 		"paramOne": "switch",
 		"paramTwo": "switch",
 	})
 }
 
-func (s *DriverSuiteBase) createLocalDeviceSync() *FakeLocalDevice {
+func (s *DriverSuiteBase) createLocalDeviceSync() *testutils.FakeLocalDevice {
 	// after the driver is started, new devices should be created
 	// only within the driver's coroutine
-	ch := make(chan *FakeLocalDevice)
+	ch := make(chan *testutils.FakeLocalDevice)
 	s.driver.CallSync(func() {
 		ch <- s.createLocalDevice()
 	})
 	return <-ch
 }
 
-func (s *DriverSuiteBase) verifyLocalDevice(dev *FakeLocalDevice, invert bool) {
+func (s *DriverSuiteBase) verifyLocalDevice(dev *testutils.FakeLocalDevice, invert bool) {
 	v1, v2 := "0", "1"
 	if invert {
 		v1, v2 = "1", "0"
@@ -207,7 +209,7 @@ func (s *ExtDriverSuite) TestLocalDeviceRedefinition() {
 }
 
 func TestDriverSuite(t *testing.T) {
-	RunSuites(t, new(LocalDriverSuite), new(ExtDriverSuite))
+	testutils.RunSuites(t, new(LocalDriverSuite), new(ExtDriverSuite))
 }
 
 // TBD: test non-virtual devices (local devices which don't pick up retained values)

@@ -1,12 +1,14 @@
-package wbgo
+package wbgo_test
 
 import (
+	. "github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
 type ContentTrackerSuite struct {
-	Suite
-	*DataFileFixture
+	testutils.Suite
+	*testutils.DataFileFixture
 	tracker *ContentTracker
 }
 
@@ -16,7 +18,7 @@ func (s *ContentTrackerSuite) T() *testing.T {
 
 func (s *ContentTrackerSuite) SetupTest() {
 	s.Suite.SetupTest()
-	s.DataFileFixture = NewDataFileFixture(s.Suite.T())
+	s.DataFileFixture = testutils.NewDataFileFixture(s.Suite.T())
 	s.tracker = NewContentTracker()
 }
 
@@ -59,5 +61,5 @@ func (s *ContentTrackerSuite) TestTracking() {
 }
 
 func TestContentTrackerSuite(t *testing.T) {
-	RunSuites(t, new(ContentTrackerSuite))
+	testutils.RunSuites(t, new(ContentTrackerSuite))
 }

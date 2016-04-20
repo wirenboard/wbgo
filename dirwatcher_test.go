@@ -1,6 +1,8 @@
-package wbgo
+package wbgo_test
 
 import (
+	. "github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -9,8 +11,8 @@ import (
 )
 
 type DirWatcherSuite struct {
-	Suite
-	*Recorder
+	testutils.Suite
+	*testutils.Recorder
 	cleanup            []func()
 	dir1, dir2, subdir string
 	f1, f5, f6         string
@@ -50,13 +52,13 @@ func (s *DirWatcherSuite) LiveRemoveFile(filePath string) error {
 func (s *DirWatcherSuite) SetupTest() {
 	s.Suite.SetupTest()
 	s.cleanup = make([]func(), 2)
-	s.dir1, s.cleanup[0] = SetupTempDir(s.T())
-	s.dir2, s.cleanup[1] = SetupTempDir(s.T())
+	s.dir1, s.cleanup[0] = testutils.SetupTempDir(s.T())
+	s.dir2, s.cleanup[1] = testutils.SetupTempDir(s.T())
 
 	s.subdir = filepath.Join(s.dir1, "subdir")
 	s.Ck("Mkdir()", os.Mkdir(s.subdir, 0777))
 
-	s.Recorder = NewRecorder(s.T())
+	s.Recorder = testutils.NewRecorder(s.T())
 	s.dw = NewDirWatcher("\\.js$", s)
 
 	// make tests a bit quicker
@@ -208,5 +210,5 @@ func (s *DirWatcherSuite) TestStoppingDirWatcher() {
 }
 
 func TestDirWatcherSuite(t *testing.T) {
-	RunSuites(t, new(DirWatcherSuite))
+	testutils.RunSuites(t, new(DirWatcherSuite))
 }
