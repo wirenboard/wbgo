@@ -2,7 +2,7 @@ package wbgo
 
 import (
 	"fmt"
-	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
+	MQTT "github.com/contactless/org.eclipse.paho.mqtt.golang"
 	"log"
 	"math/rand"
 	"os"
