@@ -2,11 +2,14 @@ package testutils
 
 import (
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+var oldRmDataDir func()
 
 type DataFileFixture struct {
 	*Fixture
@@ -16,15 +19,23 @@ type DataFileFixture struct {
 }
 
 func NewDataFileFixture(t *testing.T) (f *DataFileFixture) {
+	if oldRmDataDir != nil {
+		// don't use wbgo.Warn here to avoid unneeded test failures
+		log.Printf("SetupTempDir(): WARNING: using auto cleanup for previous NewDataFileFixture() " +
+			"[perhaps due to an unfinished fixture setup]")
+		oldRmDataDir()
+	}
 	f = &DataFileFixture{Fixture: NewFixture(t)}
 	var err error
 	f.wd, err = os.Getwd()
 	f.Ckf("Getwd", err)
 	f.dataFileTempDir, f.rmDataFileDir = SetupTempDir(f.T())
+	oldRmDataDir = f.rmDataFileDir
 	return
 }
 
 func (f *DataFileFixture) TearDownDataFiles() {
+	oldRmDataDir = nil
 	f.rmDataFileDir()
 	err := os.Chdir(f.wd)
 	f.Ckf("Chdir", err)
