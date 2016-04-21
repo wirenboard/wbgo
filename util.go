@@ -3,6 +3,7 @@ package wbgo
 import (
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -102,4 +103,10 @@ func IsSubpath(basepath, maybeSubpath string) bool {
 		return false
 	}
 	return true
+}
+
+func GetStack() string {
+	buf := make([]byte, 32768)
+	n := runtime.Stack(buf, true)
+	return string(buf[0:n])
 }
