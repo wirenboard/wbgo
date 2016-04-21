@@ -3,6 +3,7 @@ package testutils
 import (
 	"fmt"
 	"github.com/contactless/wbgo"
+	"log"
 	"strings"
 	"sync"
 	"testing"
@@ -159,7 +160,7 @@ func (client *FakeMQTTClient) WaitForReady() <-chan struct{} {
 
 func (client *FakeMQTTClient) Start() {
 	if client.started {
-		client.broker.t.Fatalf("%s: client already started", client.id)
+		return
 	}
 	client.started = true
 	if !client.broker.waitForRetained {
@@ -175,7 +176,7 @@ func (client *FakeMQTTClient) Stop() {
 
 func (client *FakeMQTTClient) ensureStarted() {
 	if !client.started {
-		client.broker.t.Fatalf("%s: client not started", client.id)
+		log.Panicf("%s: client not started", client.id)
 	}
 }
 
