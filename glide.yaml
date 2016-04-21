@@ -1,0 +1,10 @@
+package: .
+import:
+- package: github.com/contactless/org.eclipse.paho.mqtt.golang
+- package: github.com/stretchr/objx
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
+  - require
+  - suite
+- package: gopkg.in/fsnotify.v1
