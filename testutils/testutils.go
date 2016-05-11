@@ -68,21 +68,44 @@ func NewRecMatcher(text string, fn RecMatcherFunc) *RecMatcher {
 	return &RecMatcher{text, fn}
 }
 
+type RegexpCaptureHandler func(submatches []string) bool
+
+// RegexpCaptureMatcherWithCustomText returns a matcher that matches
+// the specified regexp against the item being verified, then invokes
+// handler with submatches slice as an argument. Succeeds only in
+// case handler returns true. The speicified text is used in
+// mismatch logs.
+func RegexpCaptureMatcherWithCustomText(itemRx string, text string, handler RegexpCaptureHandler) *RecMatcher {
+	rx := regexp.MustCompile(itemRx)
+	return NewRecMatcher(
+		itemRx,
+		func(item string) bool {
+			m := rx.FindStringSubmatch(item)
+			if m == nil {
+				wbgo.Error.Printf(
+					"RegexpCaptureMatcher: regexp mismatch: %s against %s",
+					item, rx)
+				return false
+			}
+			return handler(m)
+		})
+}
+
+// RegexpCaptureMatcher is the same as RegexpCaptureMatcherWithCustomText
+// but uses itemRx as mismatch text
+func RegexpCaptureMatcher(itemRx string, handler RegexpCaptureHandler) *RecMatcher {
+	return RegexpCaptureMatcherWithCustomText(itemRx, itemRx, handler)
+}
+
 // JSONRecMatcher returns a matcher that matches a first
 // group captured by regular expression rx against JSON
 // value. If rx has no groups, the whole text matched
 // by rx is used
 func JSONRecMatcher(value objx.Map, itemRx string) *RecMatcher {
-	rx := regexp.MustCompile(itemRx)
 	valStr := value.MustJSON()
-	return NewRecMatcher(
-		valStr,
-		func(item string) bool {
-			m := rx.FindStringSubmatch(item)
-			if m == nil {
-				wbgo.Error.Printf("JSONRecMatcher: regexp mismatch: %s against %s", item, rx)
-				return false
-			}
+	return RegexpCaptureMatcherWithCustomText(
+		itemRx, valStr,
+		func(m []string) bool {
 			var text string
 			if len(m) > 1 {
 				text = m[1]
