@@ -2,7 +2,7 @@ package testutils
 
 import (
 	"github.com/contactless/wbgo"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
 	"time"
@@ -11,22 +11,22 @@ import (
 type FakeTimerFixture struct {
 	*Fixture
 	rec         *Recorder
-	nextTimerId int
-	timers      map[int]*fakeTimer
+	nextTimerId uint64
+	timers      map[uint64]*fakeTimer
 	currentTime time.Time
 }
 
 // TBD: use Setup instead
 func NewFakeTimerFixture(t *testing.T, rec *Recorder) *FakeTimerFixture {
-	return &FakeTimerFixture{NewFixture(t), rec, 1, make(map[int]*fakeTimer), testStartTime}
+	return &FakeTimerFixture{NewFixture(t), rec, 1, make(map[uint64]*fakeTimer), testStartTime}
 }
 
 func (fixture *FakeTimerFixture) ResetTimerIndex() {
 	fixture.nextTimerId = 1
 }
 
-func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, periodic bool) wbgo.Timer {
-	if id < 0 {
+func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id uint64, d time.Duration, periodic bool) wbgo.Timer {
+	if id == 0 {
 		id = fixture.nextTimerId
 		fixture.nextTimerId++
 	}
@@ -39,6 +39,9 @@ func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, p
 		active:   true,
 		rec:      fixture.rec,
 	}
+	if _, found := fixture.timers[id]; found {
+		fixture.t.Fatalf("FakeTimerFixture: duplicate timer id: %d", id)
+	}
 	fixture.timers[id] = timer
 	what := "timer"
 	if periodic {
@@ -49,11 +52,11 @@ func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id int, d time.Duration, p
 }
 
 func (fixture *FakeTimerFixture) NewFakeTimer(d time.Duration) wbgo.Timer {
-	return fixture.NewFakeTimerOrTicker(-1, d, false)
+	return fixture.NewFakeTimerOrTicker(0, d, false)
 }
 
 func (fixture *FakeTimerFixture) NewFakeTicker(d time.Duration) wbgo.Timer {
-	return fixture.NewFakeTimerOrTicker(-1, d, true)
+	return fixture.NewFakeTimerOrTicker(0, d, true)
 }
 
 func (fixture *FakeTimerFixture) CurrentTime() time.Time {
@@ -65,7 +68,7 @@ func (fixture *FakeTimerFixture) AdvanceTime(d time.Duration) time.Time {
 	return fixture.currentTime
 }
 
-func (fixture *FakeTimerFixture) FireTimer(id int, ts time.Time) {
+func (fixture *FakeTimerFixture) FireTimer(id uint64, ts time.Time) {
 	if timer, found := fixture.timers[id]; !found {
 		fixture.t.Fatalf("FakeTimerFixture.FireTimer(): bad timer id: %d", id)
 	} else {
@@ -76,7 +79,7 @@ func (fixture *FakeTimerFixture) FireTimer(id int, ts time.Time) {
 type fakeTimer struct {
 	sync.Mutex
 	t        *testing.T
-	id       int
+	id       uint64
 	c        chan time.Time
 	d        time.Duration
 	periodic bool
@@ -92,7 +95,7 @@ func (timer *fakeTimer) fire(t time.Time) {
 	timer.Lock()
 	defer timer.Unlock()
 	timer.rec.Rec("timer.fire(): %d", timer.id)
-	assert.True(timer.t, timer.active)
+	require.True(timer.t, timer.active)
 	timer.c <- t
 	if !timer.periodic {
 		timer.active = false
