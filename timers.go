@@ -73,7 +73,7 @@ type RealRTimer struct {
 	RealTimer
 }
 
-// Reset resets existing timer or creating new with given duration
+// Reset resets an existing timer or creates a new one with given duration
 func (timer *RealRTimer) Reset(d time.Duration) {
 	if timer.innerTimer == nil {
 		timer.innerTimer = time.NewTimer(d)
