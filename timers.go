@@ -13,6 +13,15 @@ type Timer interface {
 	Stop()
 }
 
+// RTimer is reusable Timer with Reset method
+type RTimer interface {
+	// embed generic Timer here
+	Timer
+
+	// Reset changes the timer to expire after new duration d
+	Reset(d time.Duration)
+}
+
 // RealTicker incapsulates a real time.Ticker
 type RealTicker struct {
 	innerTicker *time.Ticker
@@ -57,4 +66,22 @@ func (timer *RealTimer) Stop() {
 		timer.innerTimer.Stop()
 		timer.innerTimer = nil
 	}
+}
+
+// RealRTimer incapsulates a real time.Timer with Reset() method
+type RealRTimer struct {
+	RealTimer
+}
+
+// Reset resets existing timer or creating new with given duration
+func (timer *RealRTimer) Reset(d time.Duration) {
+	if timer.innerTimer == nil {
+		timer.innerTimer = time.NewTimer(d)
+	} else {
+		timer.innerTimer.Reset(d)
+	}
+}
+
+func NewRealRTimer(d time.Duration) *RealRTimer {
+	return &RealRTimer{RealTimer{time.NewTimer(d)}}
 }
