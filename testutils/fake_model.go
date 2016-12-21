@@ -168,8 +168,11 @@ func (dev *FakeLocalDevice) QueryParams() {
 	sort.Strings(keys)
 	for _, k := range keys {
 		paramType := dev.paramTypes[k]
-		dev.Observer.OnNewControl(dev, k, paramType, dev.paramValues[k], false, -1,
-			paramType != "pushbutton")
+		dev.Observer.OnNewControl(dev, wbgo.Control{
+			Name:  k,
+			Type:  paramType,
+			Value: dev.paramValues[k],
+		})
 	}
 }
 

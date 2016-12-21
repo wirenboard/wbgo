@@ -7,10 +7,18 @@ import (
 	"time"
 )
 
+type Writability int
+
 const (
-	EVENT_QUEUE_LEN          = 100
-	DEFAULT_POLL_INTERVAL_MS = 5000
-	CONTROL_LIST_CAPACITY    = 32
+	EVENT_QUEUE_LEN       = 100
+	DEFAULT_POLL_INTERVAL = 5 * time.Second
+	CONTROL_LIST_CAPACITY = 32
+
+	pushButtonType = "pushbutton"
+
+	DefaultWritability Writability = iota
+	ForceReadOnly
+	ForceWritable
 )
 
 type MQTTMessage struct {
@@ -79,9 +87,42 @@ type ModelObserver interface {
 	OnNewDevice(dev DeviceModel)
 }
 
+type Control struct {
+	Name        string
+	Title       string
+	Type        string
+	Value       string
+	Units       string
+	Writability Writability
+	HasMax      bool
+	Max         float64
+	Forget      bool
+}
+
+// FIXME: don't use 'type:units' notation for Type
+func (c Control) GetType() string {
+	if idx := strings.Index(c.Type, ":"); idx >= 0 {
+		return c.Type[:idx]
+	}
+	return c.Type
+}
+
+func (c Control) GetUnits() string {
+	if c.Units != "" {
+		return c.Units
+	}
+	if idx := strings.Index(c.Type, ":"); idx >= 0 {
+		return c.Type[idx+1:]
+	}
+	return ""
+}
+
+func (c Control) Retain() bool {
+	return !c.Forget && c.Type != pushButtonType
+}
+
 type DeviceObserver interface {
-	OnNewControl(dev LocalDeviceModel, name, paramType, value string, readOnly bool, max float64,
-		retain bool) string
+	OnNewControl(dev LocalDeviceModel, control Control) string
 	OnValue(dev DeviceModel, name, value string)
 }
 
@@ -153,7 +194,7 @@ type Driver struct {
 	retainMap              map[string]bool
 	topics                 map[string]*driverTopic
 	autoPoll               bool
-	pollIntervalMs         int
+	pollInterval           time.Duration
 	acceptsExternalDevices bool
 	active                 bool
 	ready                  bool
@@ -178,7 +219,7 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		controlList:     make(map[string][]string),
 		topics:          make(map[string]*driverTopic),
 		autoPoll:        true,
-		pollIntervalMs:  DEFAULT_POLL_INTERVAL_MS,
+		pollInterval:    DEFAULT_POLL_INTERVAL,
 	}
 	drv.whenReady = NewDeferredList(drv.CallSync)
 	drv.model.Observe(drv)
@@ -193,12 +234,12 @@ func (drv *Driver) AutoPoll() bool {
 	return drv.autoPoll
 }
 
-func (drv *Driver) SetPollInterval(pollIntervalMs int) {
-	drv.pollIntervalMs = pollIntervalMs
+func (drv *Driver) SetPollInterval(pollInterval time.Duration) {
+	drv.pollInterval = pollInterval
 }
 
-func (drv *Driver) PollInterval() int {
-	return drv.pollIntervalMs
+func (drv *Driver) PollInterval() time.Duration {
+	return drv.pollInterval
 }
 
 func (drv *Driver) Poll() {
@@ -297,10 +338,11 @@ func (drv *Driver) subscribe(handler MQTTMessageHandler, topics ...string) {
 	drv.client.Subscribe(drv.wrapMessageHandler(handler), topics...)
 }
 
-func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, value string, readOnly bool, max float64, retain bool) string {
-	Debug.Printf("new control for %s: %s of type %s, value %s", dev.Name(), controlName, paramType, value)
-	controlTopic := drv.controlTopic(dev, controlName)
-	if drv.active && dev.IsVirtual() && retain {
+func (drv *Driver) OnNewControl(dev LocalDeviceModel, control Control) string {
+	Debug.Printf("new control for %s: %#v", dev.Name(), control)
+	controlTopic := drv.controlTopic(dev, control.Name)
+	value := control.Value
+	if drv.active && dev.IsVirtual() && control.Retain() {
 		// keep value in the case of new virtual device definition in the running driver
 		drvTopic, found := drv.topics[controlTopic]
 		if found {
@@ -309,38 +351,42 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, controlName, paramType, va
 	}
 	devName := dev.Name()
 	nextOrder := drv.nextOrder[devName]
-	units := ""
-	if strings.Contains(paramType, ":") {
-		parts := strings.SplitN(paramType, ":", 2)
-		paramType, units = parts[0], parts[1]
+	drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "type"), control.GetType())
+
+	// FIXME: tests
+	if control.Title != "" {
+		drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "name"), control.Title)
 	}
-	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "type"), paramType)
-	if units != "" {
-		// FIXME (untested + unpretty)
-		drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "units"), units)
+
+	if control.GetUnits() != "" {
+		// FIXME: tests
+		drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "units"), control.GetUnits())
 	}
-	if readOnly {
-		drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "readonly"), "1")
+	// FIXME: tests
+	switch control.Writability {
+	case ForceReadOnly:
+		drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "readonly"), "1")
+	case ForceWritable:
+		drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "writable"), "1")
 	}
-	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "order"),
-		strconv.Itoa(nextOrder))
-	if max >= 0 {
-		drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "max"),
-			fmt.Sprintf("%v", max))
+	drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "order"), strconv.Itoa(nextOrder))
+	if control.HasMax {
+		drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "max"), fmt.Sprintf("%v", control.Max))
 	}
 	drv.nextOrder[devName] = nextOrder + 1
-	drv.retainMap[controlTopic] = retain
-	if retain {
+	drv.retainMap[controlTopic] = control.Retain()
+	if control.Retain() {
 		// non-retained controls are used for buttons
-		drv.publishValue(dev, controlName, value)
+		drv.publishValue(dev, control.Name, value)
 	}
-	if !readOnly {
-		Debug.Printf("subscribe to: %s", drv.controlTopic(dev, controlName, "on"))
+	// XXX: look at the control type
+	if control.Writability != ForceReadOnly {
+		Debug.Printf("subscribe to: %s", drv.controlTopic(dev, control.Name, "on"))
 		drv.subscribe(
 			drv.handleIncomingControlOnValue,
-			drv.controlTopic(dev, controlName, "on"))
+			drv.controlTopic(dev, control.Name, "on"))
 	}
-	drv.controlList[devName] = append(drv.controlList[devName], controlName)
+	drv.controlList[devName] = append(drv.controlList[devName], control.Name)
 	return value
 }
 
@@ -523,7 +569,7 @@ func (drv *Driver) Start() error {
 	var ticker *time.Ticker
 	var pollChannel <-chan time.Time = drv.poll
 	if drv.autoPoll {
-		ticker = time.NewTicker(time.Duration(drv.pollIntervalMs) * time.Millisecond)
+		ticker = time.NewTicker(drv.pollInterval)
 		pollChannel = ticker.C
 	}
 
