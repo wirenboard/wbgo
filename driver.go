@@ -356,7 +356,7 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, control Control) string {
 	if control.Order > 0 {
 		nextOrder = control.Order
 	} else {
-		nextOrder := drv.nextOrder[devName]
+		nextOrder = drv.nextOrder[devName]
 	}
 
 	drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "type"), control.GetType())
