@@ -97,6 +97,7 @@ type Control struct {
 	HasMax      bool
 	Max         float64
 	Forget      bool
+	Order       int
 }
 
 // FIXME: don't use 'type:units' notation for Type
@@ -350,7 +351,14 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, control Control) string {
 		}
 	}
 	devName := dev.Name()
-	nextOrder := drv.nextOrder[devName]
+
+	nextOrder := 0
+	if control.Order > 0 {
+		nextOrder = control.Order
+	} else {
+		nextOrder := drv.nextOrder[devName]
+	}
+
 	drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "type"), control.GetType())
 
 	// FIXME: tests
@@ -373,7 +381,11 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, control Control) string {
 	if control.HasMax {
 		drv.publishMeta(drv.controlTopic(dev, control.Name, "meta", "max"), fmt.Sprintf("%v", control.Max))
 	}
-	drv.nextOrder[devName] = nextOrder + 1
+
+	if nextOrder >= drv.nextOrder[devName] {
+		drv.nextOrder[devName] = nextOrder + 1
+	}
+
 	drv.retainMap[controlTopic] = control.Retain()
 	if control.Retain() {
 		// non-retained controls are used for buttons
