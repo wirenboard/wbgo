@@ -3,6 +3,7 @@ package testutils
 import (
 	"github.com/contactless/wbgo"
 	"github.com/stretchr/testify/require"
+	"log"
 	"sync"
 	"testing"
 	"time"
@@ -21,8 +22,9 @@ func NewFakeTimerFixture(t *testing.T, rec *Recorder) *FakeTimerFixture {
 	return &FakeTimerFixture{NewFixture(t), rec, 1, make(map[uint64]*fakeTimer), testStartTime}
 }
 
-func (fixture *FakeTimerFixture) ResetTimerIndex() {
+func (fixture *FakeTimerFixture) ClearTimers() {
 	fixture.nextTimerId = 1
+	fixture.timers = make(map[uint64]*fakeTimer)
 }
 
 func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id uint64, d time.Duration, periodic bool) wbgo.Timer {
@@ -40,7 +42,8 @@ func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id uint64, d time.Duration
 		rec:      fixture.rec,
 	}
 	if _, found := fixture.timers[id]; found {
-		fixture.t.Fatalf("FakeTimerFixture: duplicate timer id: %d", id)
+		// can't use t.Fatalf() in non-main goroutine
+		log.Panicf("FakeTimerFixture: duplicate timer id: %d", id)
 	}
 	fixture.timers[id] = timer
 	what := "timer"
@@ -70,7 +73,8 @@ func (fixture *FakeTimerFixture) AdvanceTime(d time.Duration) time.Time {
 
 func (fixture *FakeTimerFixture) FireTimer(id uint64, ts time.Time) {
 	if timer, found := fixture.timers[id]; !found {
-		fixture.t.Fatalf("FakeTimerFixture.FireTimer(): bad timer id: %d", id)
+		// can't use t.Fatalf() in non-main goroutine
+		log.Panicf("FakeTimerFixture.FireTimer(): bad timer id: %d", id)
 	} else {
 		timer.fire(ts)
 	}
