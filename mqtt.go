@@ -4,6 +4,7 @@ import (
 	"fmt"
 	MQTT "github.com/contactless/org.eclipse.paho.mqtt.golang"
 	"log"
+	"log/syslog"
 	"math/rand"
 	"os"
 	"sync"
@@ -218,9 +219,16 @@ func (client *PahoMQTTClient) Unsubscribe(topics ...string) {
 	client.innerClient.Unsubscribe(topics...)
 }
 
-func EnableMQTTDebugLog() {
-	MQTT.ERROR = log.New(os.Stdout, "", 0)
-	MQTT.CRITICAL = log.New(os.Stdout, "", 0)
-	MQTT.WARN = log.New(os.Stdout, "", 0)
-	MQTT.DEBUG = log.New(os.Stdout, "", 0)
+func EnableMQTTDebugLog(use_syslog bool) {
+	if use_syslog {
+		MQTT.ERROR = makeSyslogger(syslog.LOG_DAEMON|syslog.LOG_ERR, "[MQTT] ERROR: ")
+		MQTT.CRITICAL = makeSyslogger(syslog.LOG_DAEMON|syslog.LOG_CRIT, "[MQTT] CRITICAL: ")
+		MQTT.WARN = makeSyslogger(syslog.LOG_DAEMON|syslog.LOG_WARNING, "[MQTT] WARNING: ")
+		MQTT.DEBUG = makeSyslogger(syslog.LOG_DAEMON|syslog.LOG_DEBUG, "[MQTT] DEBUG: ")
+	} else {
+		MQTT.ERROR = log.New(os.Stdout, "", 0)
+		MQTT.CRITICAL = log.New(os.Stdout, "", 0)
+		MQTT.WARN = log.New(os.Stdout, "", 0)
+		MQTT.DEBUG = log.New(os.Stdout, "", 0)
+	}
 }
