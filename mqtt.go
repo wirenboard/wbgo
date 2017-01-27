@@ -22,7 +22,7 @@ type MQTTSubscriptionMap map[string][]MQTTMessageHandler
 type PahoMQTTClient struct {
 	startMtx        sync.Mutex
 	connMtx         sync.Mutex
-	innerClient     *MQTT.client
+	innerClient     MQTT.Client
 	waitForRetained bool
 	ready           chan struct{}
 	stopped         chan struct{}
@@ -56,7 +56,7 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 	return
 }
 
-func (client *PahoMQTTClient) onConnect(innerClient *MQTT.client) {
+func (client *PahoMQTTClient) onConnect(innerClient MQTT.Client) {
 	Info.Printf("MQTT connection established")
 	client.connMtx.Lock()
 	client.connected = true
@@ -71,7 +71,7 @@ func (client *PahoMQTTClient) onConnect(innerClient *MQTT.client) {
 	client.connMtx.Unlock()
 }
 
-func (client *PahoMQTTClient) onConnectionLost(inner *MQTT.client, err error) {
+func (client *PahoMQTTClient) onConnectionLost(inner MQTT.Client, err error) {
 	Warn.Printf("MQTT connection lost")
 	client.connMtx.Lock()
 	client.connected = false
@@ -178,7 +178,7 @@ func (client *PahoMQTTClient) subscribe(callback MQTTMessageHandler, topics ...s
 		filters[topic] = 2
 	}
 
-	wrappedCallback := func(client *MQTT.client, msg MQTT.Message) {
+	wrappedCallback := func(client MQTT.Client, msg MQTT.Message) {
 		if DebuggingEnabled() {
 			Debug.Printf("GOT MESSAGE: %s --- %s", msg.Topic(), string(msg.Payload()))
 		}
