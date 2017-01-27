@@ -2,7 +2,8 @@ package wbgo
 
 import (
 	"fmt"
-	MQTT "github.com/contactless/org.eclipse.paho.mqtt.golang"
+	// MQTT "github.com/contactless/org.eclipse.paho.mqtt.golang"
+	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"log"
 	"log/syslog"
 	"math/rand"
