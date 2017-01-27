@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	DISCONNECT_WAIT_MS = 100
-	TOKEN_QUEUE_LEN    = 512
+	DISCONNECT_WAIT_MS  = 100
+	TOKEN_QUEUE_LEN     = 1024
+	MESSAGE_CHANNEL_LEN = 1024
 )
 
 type MQTTSubscriptionMap map[string][]MQTTMessageHandler
@@ -51,7 +52,8 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 		AddBroker(server).
 		SetClientID(clientID).
 		SetOnConnectHandler(client.onConnect).
-		SetConnectionLostHandler(client.onConnectionLost)
+		SetConnectionLostHandler(client.onConnectionLost).
+		SetMessageChannelDepth(MESSAGE_CHANNEL_LEN)
 	client.innerClient = MQTT.NewClient(opts)
 	return
 }
