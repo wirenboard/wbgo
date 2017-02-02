@@ -585,13 +585,6 @@ func (drv *Driver) Start() error {
 		pollChannel = ticker.C
 	}
 
-	if drv.acceptsExternalDevices {
-		drv.subscribe(drv.handleDeviceTitle, "/devices/+/meta/name")
-		drv.subscribe(drv.handleIncomingControlValue, "/devices/+/controls/+")
-		drv.subscribe(drv.handleExternalControlType, "/devices/+/controls/+/meta/type")
-		drv.subscribe(drv.handleExternalControlMax, "/devices/+/controls/+/meta/max")
-	}
-
 	go func() {
 		readyCh := drv.client.WaitForReady()
 		for {
@@ -617,6 +610,13 @@ func (drv *Driver) Start() error {
 			}
 		}
 	}()
+
+	if drv.acceptsExternalDevices {
+		drv.subscribe(drv.handleDeviceTitle, "/devices/+/meta/name")
+		drv.subscribe(drv.handleIncomingControlValue, "/devices/+/controls/+")
+		drv.subscribe(drv.handleExternalControlType, "/devices/+/controls/+/meta/type")
+		drv.subscribe(drv.handleExternalControlMax, "/devices/+/controls/+/meta/max")
+	}
 	return nil
 }
 
