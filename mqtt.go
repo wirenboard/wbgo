@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	DISCONNECT_WAIT_MS = 100
-	TOKEN_QUEUE_LEN    = 512
+	DISCONNECT_WAIT_MS  = 100
+	TOKEN_QUEUE_LEN     = 1
+	MESSAGE_CHANNEL_LEN = 1
 )
 
 type MQTTSubscriptionMap map[string][]MQTTMessageHandler
@@ -23,10 +24,12 @@ type PahoMQTTClient struct {
 	startMtx        sync.Mutex
 	connMtx         sync.Mutex
 	innerClient     MQTT.Client
+	innerOutClient  MQTT.Client
 	waitForRetained bool
 	ready           chan struct{}
 	stopped         chan struct{}
 	tokens          chan MQTT.Token
+	tokensOut       chan MQTT.Token
 	subs            MQTTSubscriptionMap
 	started         bool
 	connected       bool
@@ -43,16 +46,21 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 		ready:           make(chan struct{}),
 		stopped:         make(chan struct{}),
 		tokens:          make(chan MQTT.Token, TOKEN_QUEUE_LEN),
+		tokensOut:       make(chan MQTT.Token, TOKEN_QUEUE_LEN),
 		subs:            make(MQTTSubscriptionMap),
 		started:         false,
 		connected:       false,
 	}
 	opts := MQTT.NewClientOptions().
 		AddBroker(server).
-		SetClientID(clientID).
+		SetClientID(clientID + "-sub").
 		SetOnConnectHandler(client.onConnect).
-		SetConnectionLostHandler(client.onConnectionLost)
+		SetConnectionLostHandler(client.onConnectionLost).
+		SetMessageChannelDepth(MESSAGE_CHANNEL_LEN)
 	client.innerClient = MQTT.NewClient(opts)
+
+	opts.SetClientID(clientID + "-pub")
+	client.innerOutClient = MQTT.NewClient(opts)
 	return
 }
 
@@ -116,8 +124,8 @@ func (client *PahoMQTTClient) WaitForReady() <-chan struct{} {
 				// don't hang there, anyway
 				close(client.ready)
 			}
-			client.Publish(MQTTMessage{Topic: waitTopic, Payload: "1", QoS: 1})
-			client.Publish(MQTTMessage{Topic: waitTopic, Payload: "2", QoS: 2})
+			client.publishSub(MQTTMessage{Topic: waitTopic, Payload: "1", QoS: 1})
+			client.publishSub(MQTTMessage{Topic: waitTopic, Payload: "2", QoS: 2})
 		}()
 	}
 
@@ -134,12 +142,28 @@ func (client *PahoMQTTClient) Start() {
 	if token := client.innerClient.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
+	if token := client.innerOutClient.Connect(); token.Wait() && token.Error() != nil {
+		panic(token.Error())
+	}
 	go func() {
 		for {
 			select {
 			case <-client.stopped:
 				return
 			case token := <-client.tokens:
+				token.Wait()
+				if token.Error() != nil {
+					Error.Printf("MQTT error: %s", token.Error())
+				}
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			case <-client.stopped:
+				return
+			case token := <-client.tokensOut:
 				token.Wait()
 				if token.Error() != nil {
 					Error.Printf("MQTT error: %s", token.Error())
@@ -158,14 +182,23 @@ func (client *PahoMQTTClient) Stop() {
 	}
 	client.started = false
 	client.innerClient.Disconnect(DISCONNECT_WAIT_MS)
+	client.innerOutClient.Disconnect(DISCONNECT_WAIT_MS)
 	client.stopped <- struct{}{}
+}
+
+func (client *PahoMQTTClient) publishSub(message MQTTMessage) {
+	if DebuggingEnabled() {
+		Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
+	}
+	client.tokens <- client.innerClient.Publish(
+		message.Topic, message.QoS, message.Retained, message.Payload)
 }
 
 func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 	if DebuggingEnabled() {
 		Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
 	}
-	client.tokens <- client.innerClient.Publish(
+	client.tokensOut <- client.innerOutClient.Publish(
 		message.Topic, message.QoS, message.Retained, message.Payload)
 }
 
