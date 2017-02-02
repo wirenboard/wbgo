@@ -14,8 +14,8 @@ import (
 
 const (
 	DISCONNECT_WAIT_MS  = 100
-	TOKEN_QUEUE_LEN     = 1
-	MESSAGE_CHANNEL_LEN = 1
+	TOKEN_QUEUE_LEN     = 127
+	MESSAGE_CHANNEL_LEN = 127
 )
 
 type MQTTSubscriptionMap map[string][]MQTTMessageHandler

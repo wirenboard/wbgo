@@ -10,7 +10,7 @@ import (
 type Writability int
 
 const (
-	EVENT_QUEUE_LEN       = 1
+	EVENT_QUEUE_LEN       = 127
 	DEFAULT_POLL_INTERVAL = 5 * time.Second
 	CONTROL_LIST_CAPACITY = 32
 
