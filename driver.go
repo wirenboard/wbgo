@@ -587,12 +587,18 @@ func (drv *Driver) Start() error {
 
 	go func() {
 		readyCh := drv.client.WaitForReady()
+		readyDoneCh := make(chan struct{})
 		for {
 			select {
 			case <-readyCh:
-				drv.whenReady.Ready()
+				go func() {
+					drv.whenReady.Ready()
+					readyDoneCh <- struct{}{}
+				}()
 				readyCh = nil
+			case <-readyDoneCh:
 				drv.ready = true
+				readyDoneCh = nil
 			case quitCh := <-drv.quit:
 				if ticker != nil {
 					ticker.Stop()
