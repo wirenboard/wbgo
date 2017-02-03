@@ -60,6 +60,7 @@ type DeviceModel interface {
 	// (not .../on). For local devices, that can be a retained value, for external
 	// devices, the current control value
 	AcceptValue(name, value string)
+	CleanupOnRemove() bool
 }
 
 type LocalDeviceModel interface {
@@ -155,6 +156,10 @@ func (dev *DeviceBase) Title() string {
 
 func (dev *DeviceBase) SetTitle(title string) {
 	dev.DevTitle = title
+}
+
+func (dev *DeviceBase) CleanupOnRemove() bool {
+	return false
 }
 
 func (dev *DeviceBase) Observe(observer DeviceObserver) {
@@ -286,6 +291,25 @@ func (drv *Driver) clearTopicDevCache() {
 	}
 }
 
+func (drv *Driver) CleanupDeviceTopics(dev DeviceModel) {
+	Debug.Printf("cleaning up device topics for %s", dev.Name())
+	// cleanup meta of device itself
+	drv.publishMeta(drv.topic(dev, "meta", "name"), "")
+
+	// cleanup controls
+	devName := dev.Name()
+	for _, control := range drv.controlList[devName] {
+		// cleanup meta
+		meta := []string{"type", "units", "name", "readonly", "writable", "order", "max"}
+		for _, m := range meta {
+			drv.publishMeta(drv.controlTopic(dev, control, "meta", m), "")
+		}
+
+		// cleanup value
+		drv.publishValue(dev, control, "")
+	}
+}
+
 func (drv *Driver) RemoveDevice(dev DeviceModel) {
 	drv.clearTopicDevCache()
 	name := dev.Name()
@@ -298,6 +322,9 @@ func (drv *Driver) RemoveDevice(dev DeviceModel) {
 		for _, controlName := range drv.controlList[name] {
 			drv.client.Unsubscribe(drv.controlTopic(dev, controlName, "on"))
 		}
+	}
+	if dev.CleanupOnRemove() {
+		drv.CleanupDeviceTopics(dev)
 	}
 	delete(drv.deviceMap, name)
 	delete(drv.nextOrder, name)
