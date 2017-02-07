@@ -198,6 +198,7 @@ type Driver struct {
 	nextOrder              map[string]int
 	controlList            map[string][]string
 	retainMap              map[string]bool
+	cleanupMap             map[string]bool
 	topics                 map[string]*driverTopic
 	autoPoll               bool
 	pollInterval           time.Duration
@@ -222,6 +223,7 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		deviceMap:       make(map[string]DeviceModel),
 		nextOrder:       make(map[string]int),
 		retainMap:       make(map[string]bool),
+		cleanupMap:      make(map[string]bool),
 		controlList:     make(map[string][]string),
 		topics:          make(map[string]*driverTopic),
 		autoPoll:        true,
@@ -291,6 +293,14 @@ func (drv *Driver) clearTopicDevCache() {
 	}
 }
 
+func (drv *Driver) cleanupMeta(topic string) {
+	drv.publishMeta(topic, "")
+}
+
+func (drv *Driver) cleanupControl(dev DeviceModel, control string) {
+	drv.publishValue(dev, control, "")
+}
+
 func (drv *Driver) CleanupDeviceTopics(dev DeviceModel) {
 	Debug.Printf("cleaning up device topics for %s", dev.Name())
 	// cleanup meta of device itself
@@ -302,15 +312,19 @@ func (drv *Driver) CleanupDeviceTopics(dev DeviceModel) {
 		// cleanup meta
 		meta := []string{"type", "units", "name", "readonly", "writable", "order", "max"}
 		for _, m := range meta {
-			drv.publishMeta(drv.controlTopic(dev, control, "meta", m), "")
+			drv.cleanupMeta(drv.controlTopic(dev, control, "meta", m))
 		}
 
 		// cleanup value
-		drv.publishValue(dev, control, "")
+		drv.cleanupControl(dev, control)
 	}
 }
 
 func (drv *Driver) RemoveDevice(dev DeviceModel) {
+	drv.removeDevice(dev, true)
+}
+
+func (drv *Driver) removeDevice(dev DeviceModel, cleanup bool) {
 	drv.clearTopicDevCache()
 	name := dev.Name()
 	dev, found := drv.deviceMap[name]
@@ -323,9 +337,12 @@ func (drv *Driver) RemoveDevice(dev DeviceModel) {
 			drv.client.Unsubscribe(drv.controlTopic(dev, controlName, "on"))
 		}
 	}
-	if dev.CleanupOnRemove() {
+
+	if cleanup && dev.CleanupOnRemove() {
+		drv.cleanupMap[dev.Name()] = true
 		drv.CleanupDeviceTopics(dev)
 	}
+
 	delete(drv.deviceMap, name)
 	delete(drv.nextOrder, name)
 	delete(drv.controlList, name)
@@ -333,8 +350,14 @@ func (drv *Driver) RemoveDevice(dev DeviceModel) {
 
 func (drv *Driver) OnNewDevice(dev DeviceModel) {
 	drv.clearTopicDevCache()
-	drv.RemoveDevice(dev)
+	drv.removeDevice(dev, false)
 	drv.deviceMap[dev.Name()] = dev
+
+	// this device is not in 'cleanup' state
+	if dev.CleanupOnRemove() {
+		drv.cleanupMap[dev.Name()] = false
+	}
+
 	if _, ext := dev.(ExternalDeviceModel); !ext {
 		Debug.Printf("driver: new local device: %s", dev.Name())
 		// this overrides a possibly created external device with same name
@@ -477,6 +500,11 @@ func (drv *Driver) handleIncomingControlOnValue(msg MQTTMessage) {
 	parts := strings.Split(msg.Topic, "/")
 	deviceName := parts[2]
 	controlName := parts[4]
+
+	if drv.cleanupMap[deviceName] {
+		return
+	}
+
 	dev, found := drv.deviceMap[deviceName]
 	if !found {
 		Error.Printf("UNKNOWN DEVICE: %s", deviceName)
@@ -489,6 +517,11 @@ func (drv *Driver) handleIncomingControlOnValue(msg MQTTMessage) {
 
 func (drv *Driver) handleDeviceTitle(msg MQTTMessage) {
 	deviceName := strings.Split(msg.Topic, "/")[2]
+
+	if drv.cleanupMap[deviceName] {
+		return
+	}
+
 	dev, err := drv.ensureExtDevice(deviceName)
 	if err != nil {
 		Warn.Printf("Not registering external device %s: %s", deviceName, err)
@@ -514,6 +547,11 @@ func (drv *Driver) handleIncomingControlValue(msg MQTTMessage) {
 	} else {
 		drvTopic.ReceivedValue = msg.Payload
 	}
+
+	if drv.cleanupMap[drvTopic.DeviceName] {
+		return
+	}
+
 	if drvTopic.Dev == nil || drvTopic.Ready != drv.ready {
 		drvTopic.Ready = drv.ready
 		var err error
@@ -543,6 +581,11 @@ func (drv *Driver) handleExternalControlType(msg MQTTMessage) {
 	parts := strings.Split(msg.Topic, "/")
 	deviceName := parts[2]
 	controlName := parts[4]
+
+	if drv.cleanupMap[deviceName] {
+		return
+	}
+
 	dev, err := drv.ensureExtDevice(deviceName)
 	if err != nil {
 		Error.Printf("Cannot register external device %s: %s", deviceName, err)
@@ -557,6 +600,11 @@ func (drv *Driver) handleExternalControlMax(msg MQTTMessage) {
 	parts := strings.Split(msg.Topic, "/")
 	deviceName := parts[2]
 	controlName := parts[4]
+
+	if drv.cleanupMap[deviceName] {
+		return
+	}
+
 	dev, err := drv.ensureExtDevice(deviceName)
 	if err != nil {
 		Error.Printf("Cannot register external device %s: %s", deviceName, err)
