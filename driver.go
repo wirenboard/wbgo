@@ -622,10 +622,10 @@ func (drv *Driver) Start() error {
 					drv.whenReady.Ready()
 					readyDoneCh <- struct{}{}
 				}()
-				readyCh = nil
 			case <-readyDoneCh:
 				drv.ready = true
 				readyDoneCh = nil
+				readyCh = nil // to sync driverReady event
 			case quitCh := <-drv.quit:
 				if ticker != nil {
 					ticker.Stop()
