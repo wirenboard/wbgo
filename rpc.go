@@ -259,7 +259,7 @@ type MQTTRPCServer struct {
 	mqttClient MQTTClient // TBD: rename to mqttClient
 	messageCh  chan MQTTMessage
 	active     bool
-	quit       chan struct{}
+	quit       chan chan struct{}
 	serviceMap map[string]*service
 }
 
@@ -281,7 +281,7 @@ func (server *MQTTRPCServer) Start() {
 		return
 	}
 	server.active = true
-	server.quit = make(chan struct{})
+	server.quit = make(chan chan struct{})
 	server.mqttClient.Start()
 	server.mqttClient.Subscribe(func(message MQTTMessage) {
 		server.messageCh <- message
@@ -320,7 +320,10 @@ func (server *MQTTRPCServer) Stop() {
 	if !server.active {
 		return
 	}
-	close(server.quit)
+	q := make(chan struct{})
+	server.quit <- q
+	<-q
+	server.mqttClient.Stop()
 }
 
 func (server *MQTTRPCServer) subscriptionTopic() string {
@@ -330,8 +333,9 @@ func (server *MQTTRPCServer) subscriptionTopic() string {
 func (server *MQTTRPCServer) processMessages() {
 	for {
 		select {
-		case <-server.quit:
+		case quitCh := <-server.quit:
 			server.mqttClient.Unsubscribe(server.subscriptionTopic())
+			close(quitCh)
 			return
 		case msg := <-server.messageCh:
 			server.handleMessage(msg)
