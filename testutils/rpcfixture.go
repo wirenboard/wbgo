@@ -75,6 +75,7 @@ func (f *RpcFixture) expectedJSONMessage(from, subtopic string, payload objx.Map
 
 func (f *RpcFixture) TearDownRPC() {
 	f.rpc.Stop()
+	f.client.Stop()
 }
 
 func (f *RpcFixture) verifyRpcRaw(subtopic string, params, expectedResponse objx.Map) {
