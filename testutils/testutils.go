@@ -130,23 +130,27 @@ func JSONRecMatcher(value objx.Map, itemRx string) *RecMatcher {
 
 type Recorder struct {
 	*Fixture
-	ch            chan string
+	ch            chan func() string
 	emptyWaitTime time.Duration
 }
 
 func NewRecorder(t *testing.T) *Recorder {
 	rec := &Recorder{
 		Fixture:       NewFixture(t),
-		ch:            make(chan string, 1000),
+		ch:            make(chan func() string, 1000),
 		emptyWaitTime: REC_EMPTY_WAIT_TIME_MS * time.Millisecond,
 	}
 	return rec
 }
 
 func (rec *Recorder) Rec(format string, args ...interface{}) {
-	item := fmt.Sprintf(format, args...)
-	rec.t.Log("REC: ", item)
+	item := func() string { return fmt.Sprintf(format, args...) }
+	rec.t.Log("REC: ", item())
 	rec.ch <- item
+}
+
+func (rec *Recorder) RecFunc(f func() string) {
+	rec.ch <- f
 }
 
 func (rec *Recorder) SetEmptyWaitTime(duration time.Duration) {
@@ -162,7 +166,7 @@ func (rec *Recorder) VerifyEmpty() {
 		return
 	case logItem := <-rec.ch:
 		timer.Stop()
-		require.FailNow(rec.t, "unexpected logs", "%s", logItem)
+		require.FailNow(rec.t, "unexpected logs", "%s", logItem())
 	}
 }
 
@@ -178,8 +182,10 @@ func (rec *Recorder) verify(sortLogs bool, msg string, logs []interface{}) {
 			case <-timer.C:
 				require.FailNow(rec.t, "timed out waiting for log item",
 					"%s", expectedItem)
-			case logItem := <-rec.ch:
+			case logItemF := <-rec.ch:
 				timer.Stop()
+				logItem := logItemF()
+
 				// If a regular expression is specified and it
 				// matches, replace expected log item with
 				// actual log item. If it doesn't match, replace
@@ -239,7 +245,8 @@ func (rec *Recorder) SkipTill(logItem string) {
 		case <-timer.C:
 			require.FailNow(rec.t, "timed out waiting for log", "%s", logItem)
 			return
-		case l := <-rec.ch:
+		case lf := <-rec.ch:
+			l := lf()
 			if l == logItem {
 				timer.Stop()
 				return
