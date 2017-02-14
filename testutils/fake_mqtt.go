@@ -224,6 +224,7 @@ func (client *FakeMQTTClient) Start() {
 func (client *FakeMQTTClient) Stop() {
 	client.ensureStarted()
 	client.started = false
+	client.broker.Rec("stop: %s", client.id)
 
 	q := make(chan struct{})
 	client.quit <- q
