@@ -9,6 +9,10 @@ import (
 	"testing"
 )
 
+const (
+	FAKEMQTT_RECV_LEN = 64
+)
+
 func topicPartsMatch(pattern []string, topic []string) bool {
 	if len(pattern) == 0 {
 		return len(topic) == 0
@@ -72,15 +76,30 @@ func (broker *FakeMQTTBroker) SetReady() {
 func (broker *FakeMQTTBroker) Publish(origin string, message wbgo.MQTTMessage) {
 	broker.Lock()
 	defer broker.Unlock()
-	broker.Rec("%s -> %s: %s", origin, message.Topic, FormatMQTTMessage(message))
+
+	waitChs := make([]chan struct{}, 0, len(broker.subscriptions))
+
+	// tell subscribed clients we have a new message
 	for pattern, subs := range broker.subscriptions {
 		if !topicMatch(pattern, message.Topic) {
 			continue
 		}
 		for _, client := range subs {
-			client.receive(message)
+			w := make(chan struct{})
+			waitChs = append(waitChs, w)
+			client.receive(message, w)
 		}
 	}
+
+	// wait for all clients to process this message and make a record
+	wbgo.Debug.Printf("REC: %s -> %s: %s", origin, message.Topic, FormatMQTTMessage(message))
+	broker.RecFunc(func() string {
+		// wait for clients
+		for _, w := range waitChs {
+			<-w
+		}
+		return fmt.Sprintf("%s -> %s: %s", origin, message.Topic, FormatMQTTMessage(message))
+	})
 }
 
 func (broker *FakeMQTTBroker) Subscribe(client *FakeMQTTClient, topic string) {
@@ -125,11 +144,18 @@ func (broker *FakeMQTTBroker) MakeClient(id string) (client *FakeMQTTClient) {
 		broker:      broker,
 		callbackMap: make(map[string][]wbgo.MQTTMessageHandler),
 		ready:       make(chan struct{}),
+		quit:        make(chan chan struct{}),
+		recv:        make(chan fakeMQTTEvent, FAKEMQTT_RECV_LEN),
 	}
 	if broker.waitForRetained {
 		broker.readyChannels = append(broker.readyChannels, client.ready)
 	}
 	return client
+}
+
+type fakeMQTTEvent struct {
+	message wbgo.MQTTMessage
+	done    chan struct{}
 }
 
 type FakeMQTTClient struct {
@@ -139,18 +165,32 @@ type FakeMQTTClient struct {
 	broker      *FakeMQTTBroker
 	callbackMap map[string][]wbgo.MQTTMessageHandler
 	ready       chan struct{}
+	quit        chan chan struct{}
+	recv        chan fakeMQTTEvent
 }
 
-func (client *FakeMQTTClient) receive(message wbgo.MQTTMessage) {
+func (client *FakeMQTTClient) receive(message wbgo.MQTTMessage, done chan struct{}) {
+	client.recv <- fakeMQTTEvent{message, done}
+}
+
+func (client *FakeMQTTClient) handle(message wbgo.MQTTMessage) {
 	client.Lock()
-	defer client.Unlock()
+	// wbgo.Debug.Printf("search for handlers on message %v", message)
+	// collect handlers to run
+	allHandlers := make([]wbgo.MQTTMessageHandler, 0, 8)
 	for topic, handlers := range client.callbackMap {
 		if !topicMatch(topic, message.Topic) {
 			continue
 		}
 		for _, handler := range handlers {
-			handler(message)
+			// Debug.Println("append handler
+			allHandlers = append(allHandlers, handler)
 		}
+	}
+	client.Unlock()
+
+	for _, handler := range allHandlers {
+		handler(message)
 	}
 }
 
@@ -166,12 +206,29 @@ func (client *FakeMQTTClient) Start() {
 	if !client.broker.waitForRetained {
 		close(client.ready)
 	}
+
+	go func() {
+		for {
+			select {
+			case e := <-client.recv:
+				client.handle(e.message)
+				close(e.done)
+			case quitCh := <-client.quit:
+				close(quitCh)
+				return
+			}
+		}
+	}()
 }
 
 func (client *FakeMQTTClient) Stop() {
 	client.ensureStarted()
 	client.started = false
-	client.broker.Rec("stop: %s", client.id)
+
+	q := make(chan struct{})
+	client.quit <- q
+	<-q
+	close(client.quit)
 }
 
 func (client *FakeMQTTClient) ensureStarted() {
