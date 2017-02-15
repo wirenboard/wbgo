@@ -662,18 +662,21 @@ func (drv *Driver) Start() error {
 
 	go func() {
 		readyCh := drv.client.WaitForReady()
-		readyDoneCh := make(chan struct{})
+		handleMessageCh := drv.handleMessageCh
+		rd := make(chan struct{})
 		for {
 			select {
 			case <-readyCh:
+				handleMessageCh = nil
 				go func() {
 					drv.whenReady.Ready()
-					readyDoneCh <- struct{}{}
+					rd <- struct{}{}
 				}()
-			case <-readyDoneCh:
-				drv.ready = true
-				readyDoneCh = nil
 				readyCh = nil // to sync driverReady event
+			case <-rd:
+				drv.ready = true
+				handleMessageCh = drv.handleMessageCh
+				rd = nil
 			case quitCh := <-drv.quit:
 				if ticker != nil {
 					ticker.Stop()
@@ -684,7 +687,7 @@ func (drv *Driver) Start() error {
 				return
 			case <-pollChannel:
 				drv.model.Poll()
-			case f := <-drv.handleMessageCh:
+			case f := <-handleMessageCh:
 				f()
 			case f := <-drv.eventCh:
 				f()
