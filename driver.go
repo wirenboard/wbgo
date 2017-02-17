@@ -10,8 +10,8 @@ import (
 type Writability int
 
 const (
-	EVENT_QUEUE_LEN       = 0 // 8 is minimal to run engine tests without WhenReady
-	MESSAGE_QUEUE_LEN     = 0
+	EVENT_QUEUE_LEN       = 64
+	MESSAGE_QUEUE_LEN     = 64
 	DEFAULT_POLL_INTERVAL = 5 * time.Second
 	CONTROL_LIST_CAPACITY = 32
 
@@ -210,6 +210,14 @@ type Driver struct {
 }
 
 func NewDriver(model Model, client MQTTClient) (drv *Driver) {
+	return newDriverWithQueueLens(model, client, EVENT_QUEUE_LEN, MESSAGE_QUEUE_LEN)
+}
+
+func NewDriverNoQueues(model Model, client MQTTClient) (drv *Driver) {
+	return newDriverWithQueueLens(model, client, 0, 0)
+}
+
+func newDriverWithQueueLens(model Model, client MQTTClient, eventLen, messageLen int) (drv *Driver) {
 	drv = &Driver{
 		model:  model,
 		client: client,
@@ -217,8 +225,8 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		// to avoid deadlocks in tests in a case when
 		// model change causes MQTT message to be generated
 		// that is passed back to the model
-		eventCh:         make(chan func(), EVENT_QUEUE_LEN),
-		handleMessageCh: make(chan func(), MESSAGE_QUEUE_LEN),
+		eventCh:         make(chan func(), eventLen),
+		handleMessageCh: make(chan func(), messageLen),
 		quit:            make(chan chan struct{}),
 		poll:            make(chan time.Time),
 		deviceMap:       make(map[string]DeviceModel),
