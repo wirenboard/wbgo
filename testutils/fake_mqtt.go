@@ -7,10 +7,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 const (
-	FAKEMQTT_RECV_LEN = 64
+	FAKEMQTT_RECV_LEN   = 64
+	FAKEMQTT_STOP_DELAY = 100
 )
 
 func topicPartsMatch(pattern []string, topic []string) bool {
@@ -227,9 +229,16 @@ func (client *FakeMQTTClient) Stop() {
 	client.broker.Rec("stop: %s", client.id)
 
 	q := make(chan struct{})
-	client.quit <- q
-	<-q
-	close(client.quit)
+	t := time.NewTimer(FAKEMQTT_STOP_DELAY * time.Millisecond)
+
+	select {
+	case <-t.C:
+		wbgo.Debug.Println("Fake MQTT client failed to stop properly, but don't panic: it's OK for tests")
+	case client.quit <- q:
+		<-q
+		close(client.quit)
+	}
+
 }
 
 func (client *FakeMQTTClient) ensureStarted() {
