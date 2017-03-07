@@ -9,25 +9,27 @@ import (
 	"time"
 )
 
+type TimerId uint64
+
 type FakeTimerFixture struct {
 	*Fixture
 	rec         *Recorder
-	nextTimerId uint64
-	timers      map[uint64]*fakeTimer
+	nextTimerId TimerId
+	timers      map[TimerId]*fakeTimer
 	currentTime time.Time
 }
 
 // TBD: use Setup instead
 func NewFakeTimerFixture(t *testing.T, rec *Recorder) *FakeTimerFixture {
-	return &FakeTimerFixture{NewFixture(t), rec, 1, make(map[uint64]*fakeTimer), testStartTime}
+	return &FakeTimerFixture{NewFixture(t), rec, 1, make(map[TimerId]*fakeTimer), testStartTime}
 }
 
 func (fixture *FakeTimerFixture) ClearTimers() {
 	fixture.nextTimerId = 1
-	fixture.timers = make(map[uint64]*fakeTimer)
+	fixture.timers = make(map[TimerId]*fakeTimer)
 }
 
-func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id uint64, d time.Duration, periodic bool) wbgo.Timer {
+func (fixture *FakeTimerFixture) NewFakeTimerOrTicker(id TimerId, d time.Duration, periodic bool) wbgo.Timer {
 	if id == 0 {
 		id = fixture.nextTimerId
 		fixture.nextTimerId++
@@ -71,7 +73,7 @@ func (fixture *FakeTimerFixture) AdvanceTime(d time.Duration) time.Time {
 	return fixture.currentTime
 }
 
-func (fixture *FakeTimerFixture) FireTimer(id uint64, ts time.Time) {
+func (fixture *FakeTimerFixture) FireTimer(id TimerId, ts time.Time) {
 	if timer, found := fixture.timers[id]; !found {
 		// can't use t.Fatalf() in non-main goroutine
 		log.Panicf("FakeTimerFixture.FireTimer(): bad timer id: %d", id)
@@ -83,7 +85,7 @@ func (fixture *FakeTimerFixture) FireTimer(id uint64, ts time.Time) {
 type fakeTimer struct {
 	sync.Mutex
 	t        *testing.T
-	id       uint64
+	id       TimerId
 	c        chan time.Time
 	d        time.Duration
 	periodic bool
