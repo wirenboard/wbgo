@@ -405,7 +405,7 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, control Control) string {
 	if drv.active && dev.IsVirtual() && control.Retain() {
 		// keep value in the case of new virtual device definition in the running driver
 		drvTopic, found := drv.topics[controlTopic]
-		if found {
+		if found && drvTopic.ReceivedValue != "" {
 			value = drvTopic.ReceivedValue
 		}
 	}
