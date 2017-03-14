@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	// MQTT "github.com/contactless/org.eclipse.paho.mqtt.golang"
-	MQTT "github.com/eclipse/paho.mqtt.golang"
+	// MQTT "github.com/eclipse/paho.mqtt.golang"
 	"os"
 	"os/signal"
 	"runtime/pprof"
