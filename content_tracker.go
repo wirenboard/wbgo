@@ -35,3 +35,12 @@ func (tracker *ContentTracker) Track(key, path string) (bool, error) {
 
 	return false, nil
 }
+
+func (tracker *ContentTracker) Untrack(key string) error {
+	tracker.Lock()
+	defer tracker.Unlock()
+
+	delete(tracker.hashes, key)
+
+	return nil
+}
