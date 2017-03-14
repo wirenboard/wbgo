@@ -37,7 +37,7 @@ func profile(profFile string, dieAfter time.Duration, readyCh <-chan struct{}) {
 		}
 		start := time.Now()
 		initialUserTime, initialSysTime := getRusage()
-		packetsInitiallySent, packetsInitiallyReceived := MQTT.GetStats()
+		//packetsInitiallySent, packetsInitiallyReceived := MQTT.GetStats()
 
 		f, err := os.Create(profFile)
 		if err != nil {
@@ -67,24 +67,26 @@ func profile(profFile string, dieAfter time.Duration, readyCh <-chan struct{}) {
 		cpuLoadSys := float64(elapsedSysTime) * 100.0 / float64(elapsed)
 		cpuLoad := float64(elapsedCpuTime) * 100.0 / float64(elapsed)
 
-		newPacketsSent, newPacketsReceived := MQTT.GetStats()
-		packetsSent := newPacketsSent - packetsInitiallySent
-		packetsReceived := newPacketsReceived - packetsInitiallyReceived
-		if packetsSent > 0 || packetsReceived > 0 {
-			packetsSentPerSecond := float64(packetsSent) * float64(time.Second) /
-				float64(elapsed)
-			packetsReceivedPerSecond := float64(packetsReceived) * float64(time.Second) /
-				float64(elapsed)
-			packetsSentPerCpuSecond := float64(packetsSent) * float64(time.Second) /
-				float64(elapsedCpuTime)
-			packetsReceivedPerCpuSecond := float64(packetsReceived) * float64(time.Second) /
-				float64(elapsedCpuTime)
+		/*
+			newPacketsSent, newPacketsReceived := MQTT.GetStats()
+			packetsSent := newPacketsSent - packetsInitiallySent
+			packetsReceived := newPacketsReceived - packetsInitiallyReceived
+			if packetsSent > 0 || packetsReceived > 0 {
+				packetsSentPerSecond := float64(packetsSent) * float64(time.Second) /
+					float64(elapsed)
+				packetsReceivedPerSecond := float64(packetsReceived) * float64(time.Second) /
+					float64(elapsed)
+				packetsSentPerCpuSecond := float64(packetsSent) * float64(time.Second) /
+					float64(elapsedCpuTime)
+				packetsReceivedPerCpuSecond := float64(packetsReceived) * float64(time.Second) /
+					float64(elapsedCpuTime)
 
-			fmt.Printf("\n*** %d packets sent (%.2f per sec, %.2f per cpu sec), "+
-				"%d packets received (%.2f per sec, %.2f per cpu sec)\n",
-				packetsSent, packetsSentPerSecond, packetsSentPerCpuSecond,
-				packetsReceived, packetsReceivedPerSecond, packetsReceivedPerCpuSecond)
-		}
+				fmt.Printf("\n*** %d packets sent (%.2f per sec, %.2f per cpu sec), "+
+					"%d packets received (%.2f per sec, %.2f per cpu sec)\n",
+					packetsSent, packetsSentPerSecond, packetsSentPerCpuSecond,
+					packetsReceived, packetsReceivedPerSecond, packetsReceivedPerCpuSecond)
+			}
+		*/
 
 		fmt.Printf("*** %.2f seconds elapsed, %.2f user, %.2f sys\n",
 			float64(elapsed)/float64(time.Second),
