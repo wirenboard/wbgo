@@ -672,20 +672,46 @@ func (drv *Driver) Start() error {
 	go func() {
 		readyCh := drv.client.WaitForReady()
 		handleMessageCh := drv.handleMessageCh
+		var devNull <-chan func()
+
 		rd := make(chan struct{})
+		rd2 := make(chan struct{})
 		for {
 			select {
 			case <-readyCh:
+				devNull = handleMessageCh
 				handleMessageCh = nil
+
+				// run devnull for messages
+				// skip all messages before driver is ready
+				// (whenReady() deferred list is done)
+				go func() {
+					for {
+						select {
+						case <-devNull:
+						case <-rd2:
+							return
+						}
+					}
+				}()
+
+				// run deferred list whenReady in another
+				// goroutine
 				go func() {
 					drv.whenReady.Ready()
-					rd <- struct{}{}
+					rd <- struct{}{}  // tell driver we are done
+					rd2 <- struct{}{} // tell devnull we are done
 				}()
 				readyCh = nil // to sync driverReady event
+
+			// whenReady list is done
 			case <-rd:
 				drv.ready = true
+				devNull = nil
 				handleMessageCh = drv.handleMessageCh
 				rd = nil
+				rd2 = nil
+
 			case quitCh := <-drv.quit:
 				if ticker != nil {
 					ticker.Stop()
