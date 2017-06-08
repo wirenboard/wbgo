@@ -71,9 +71,9 @@ func (client *PahoMQTTClient) pushToken(token MQTT.Token) {
 	client.tokensLen += 1
 	if client.tokensLen > client.tokensMax/2 {
 		if client.tokensLen > client.tokensMax*3/4 {
-			Error.Println("Tokens queue almost filled (%d elements of %d)", client.tokensLen, client.tokensMax)
+			Error.Printf("Tokens queue almost filled (%d elements of %d)", client.tokensLen, client.tokensMax)
 		} else if !client.tokensWarned {
-			Warn.Println("Tokens queue half-filled (%d elements of %d)", client.tokensLen, client.tokensMax)
+			Warn.Printf("Tokens queue half-filled (%d elements of %d)", client.tokensLen, client.tokensMax)
 			client.tokensWarned = true
 		}
 	}
@@ -173,7 +173,7 @@ func (client *PahoMQTTClient) Start() {
 
 				client.tokensLen -= 1
 				if client.tokensWarned && client.tokensLen < client.tokensMax/2 {
-					Info.Printf("Topics queue lenght is back to normal (%d of %d)", client.tokensLen, client.tokensMax)
+					Info.Printf("Topics queue length is back to normal (%d of %d)", client.tokensLen, client.tokensMax)
 					client.tokensWarned = false
 				}
 			}
