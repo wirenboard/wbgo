@@ -27,9 +27,7 @@ type PahoMQTTClient struct {
 	ready           chan struct{}
 	stopped         chan struct{}
 	tokens          chan MQTT.Token
-	tokensLen       uint
-	tokensMax       uint
-	tokensWarned    bool
+	tokensWarner    *ChanWarner
 	subs            MQTTSubscriptionMap
 	started         bool
 	connected       bool
@@ -50,9 +48,7 @@ func NewPahoMQTTClientQueues(server, clientID string, waitForRetained bool, toke
 		ready:           make(chan struct{}),
 		stopped:         make(chan struct{}),
 		tokens:          make(chan MQTT.Token, tokenLen),
-		tokensLen:       0,
-		tokensMax:       tokenLen,
-		tokensWarned:    false,
+		tokensWarner:    NewChanWarner("Tokens"),
 		subs:            make(MQTTSubscriptionMap),
 		started:         false,
 		connected:       false,
@@ -68,16 +64,7 @@ func NewPahoMQTTClientQueues(server, clientID string, waitForRetained bool, toke
 }
 
 func (client *PahoMQTTClient) pushToken(token MQTT.Token) {
-	client.tokensLen += 1
-	if client.tokensLen > client.tokensMax/2 {
-		if client.tokensLen > client.tokensMax*3/4 {
-			Error.Printf("Tokens queue almost filled (%d elements of %d)", client.tokensLen, client.tokensMax)
-		} else if !client.tokensWarned {
-			Warn.Printf("Tokens queue half-filled (%d elements of %d)", client.tokensLen, client.tokensMax)
-			client.tokensWarned = true
-		}
-	}
-
+	client.tokensWarner.Update(len(client.tokens), cap(client.tokens))
 	client.tokens <- token
 }
 
@@ -171,11 +158,7 @@ func (client *PahoMQTTClient) Start() {
 					Error.Printf("MQTT error: %s", token.Error())
 				}
 
-				client.tokensLen -= 1
-				if client.tokensWarned && client.tokensLen < client.tokensMax/2 {
-					Info.Printf("Topics queue length is back to normal (%d of %d)", client.tokensLen, client.tokensMax)
-					client.tokensWarned = false
-				}
+				client.tokensWarner.Update(len(client.tokens), cap(client.tokens))
 			}
 		}
 	}()

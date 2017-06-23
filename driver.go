@@ -10,7 +10,8 @@ import (
 type Writability int
 
 const (
-	EVENT_QUEUE_LEN       = 100
+	EVENT_QUEUE_LEN       = 512
+	MESSAGE_QUEUE_LEN     = 512
 	DEFAULT_POLL_INTERVAL = 5 * time.Second
 	CONTROL_LIST_CAPACITY = 32
 
@@ -186,7 +187,9 @@ type Driver struct {
 	model                  Model
 	client                 MQTTClient
 	eventCh                chan func()
+	eventWarner            *ChanWarner
 	handleMessageCh        chan func()
+	handleMessageWarner    *ChanWarner
 	quit                   chan chan struct{}
 	poll                   chan time.Time
 	deviceMap              map[string]DeviceModel // TBD: wrap DeviceModel instead of using parallel structures
@@ -202,7 +205,11 @@ type Driver struct {
 	whenReady              *DeferredList
 }
 
-func NewDriver(model Model, client MQTTClient) (drv *Driver) {
+func NewDriver(model Model, client MQTTClient) *Driver {
+	return NewDriverQueueLens(model, client, EVENT_QUEUE_LEN, MESSAGE_QUEUE_LEN)
+}
+
+func NewDriverQueueLens(model Model, client MQTTClient, eventLen, messageLen uint) (drv *Driver) {
 	drv = &Driver{
 		model:  model,
 		client: client,
@@ -210,17 +217,19 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		// to avoid deadlocks in tests in a case when
 		// model change causes MQTT message to be generated
 		// that is passed back to the model
-		eventCh:         make(chan func(), EVENT_QUEUE_LEN),
-		handleMessageCh: make(chan func(), EVENT_QUEUE_LEN),
-		quit:            make(chan chan struct{}),
-		poll:            make(chan time.Time),
-		deviceMap:       make(map[string]DeviceModel),
-		nextOrder:       make(map[string]int),
-		retainMap:       make(map[string]bool),
-		controlList:     make(map[string][]string),
-		topics:          make(map[string]*driverTopic),
-		autoPoll:        true,
-		pollInterval:    DEFAULT_POLL_INTERVAL,
+		eventCh:             make(chan func(), eventLen),
+		eventWarner:         NewChanWarner("Events"),
+		handleMessageCh:     make(chan func(), messageLen),
+		handleMessageWarner: NewChanWarner("handleMessage"),
+		quit:                make(chan chan struct{}),
+		poll:                make(chan time.Time),
+		deviceMap:           make(map[string]DeviceModel),
+		nextOrder:           make(map[string]int),
+		retainMap:           make(map[string]bool),
+		controlList:         make(map[string][]string),
+		topics:              make(map[string]*driverTopic),
+		autoPoll:            true,
+		pollInterval:        DEFAULT_POLL_INTERVAL,
 	}
 	drv.whenReady = NewDeferredList(drv.CallSync)
 	drv.model.Observe(drv)
@@ -558,10 +567,12 @@ func (drv *Driver) SetAcceptsExternalDevices(accepts bool) {
 }
 
 func (drv *Driver) CallSync(thunk func()) {
+	drv.eventWarner.Update(len(drv.eventCh), cap(drv.eventCh))
 	drv.eventCh <- thunk
 }
 
 func (drv *Driver) HandleMessageSync(thunk func()) {
+	drv.handleMessageWarner.Update(len(drv.handleMessageCh), cap(drv.handleMessageCh))
 	drv.handleMessageCh <- thunk
 }
 
@@ -611,8 +622,10 @@ func (drv *Driver) Start() error {
 			case <-pollChannel:
 				drv.model.Poll()
 			case f := <-drv.handleMessageCh:
+				drv.handleMessageWarner.Update(len(drv.handleMessageCh), cap(drv.handleMessageCh))
 				f()
 			case f := <-drv.eventCh:
+				drv.eventWarner.Update(len(drv.eventCh), cap(drv.eventCh))
 				f()
 			}
 		}

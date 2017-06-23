@@ -110,3 +110,32 @@ func GetStack() string {
 	n := runtime.Stack(buf, true)
 	return string(buf[0:n])
 }
+
+// ChanWarner is an object which observes the channel
+// and notifies user about overflows
+type ChanWarner struct {
+	name     string
+	isWarned bool
+}
+
+func NewChanWarner(name string) *ChanWarner {
+	return &ChanWarner{
+		name:     name,
+		isWarned: false,
+	}
+}
+
+func (c *ChanWarner) Update(clen int, ccap int) {
+	if clen > ccap/2 {
+		if clen > ccap*7/8 {
+			Error.Printf("queue %s is almost filled! %d/%d", c.name, clen, ccap)
+		}
+		if !c.isWarned {
+			Warn.Printf("queue %s is half-filled: %d/%d", c.name, clen, ccap)
+			c.isWarned = true
+		}
+	} else if c.isWarned {
+		Info.Printf("queue %s length back to normal: %d/%d", c.name, clen, ccap)
+		c.isWarned = false
+	}
+}
