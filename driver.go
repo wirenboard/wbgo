@@ -211,7 +211,7 @@ func NewDriver(model Model, client MQTTClient) (drv *Driver) {
 		// that is passed back to the model
 		eventCh:         make(chan func(), EVENT_QUEUE_LEN),
 		handleMessageCh: make(chan func(), EVENT_QUEUE_LEN),
-		quit:            make(chan chan struct{}),
+		quit:            make(chan chan struct{}, 1),
 		poll:            make(chan time.Time),
 		deviceMap:       make(map[string]DeviceModel),
 		nextOrder:       make(map[string]int),
