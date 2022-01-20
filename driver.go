@@ -125,6 +125,7 @@ func (c Control) Retain() bool {
 type DeviceObserver interface {
 	OnNewControl(dev LocalDeviceModel, control Control) string
 	OnValue(dev DeviceModel, name, value string)
+	OnError(dev DeviceModel, name, value string)
 }
 
 type ModelBase struct {
@@ -408,6 +409,10 @@ func (drv *Driver) OnValue(dev DeviceModel, controlName, value string) {
 	} else {
 		drv.publishValue(dev, controlName, value)
 	}
+}
+
+func (drv *Driver) OnError(dev DeviceModel, controlName, value string) {
+	drv.publishMeta(drv.controlTopic(dev, controlName, "meta", "error"), value)
 }
 
 func (drv *Driver) ensureDevice(deviceName string) (DeviceModel, error) {
