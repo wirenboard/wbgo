@@ -1,8 +1,8 @@
 hash: b7a9318ff0f60f9acfbd18976c0ac92e59d743a5f7c3bb6396c82faf19cfa1de
-updated: 2016-05-17T01:03:33.054763801Z
+updated: 2023-03-03T12:02:50.694872000Z
 imports:
 - name: github.com/contactless/org.eclipse.paho.mqtt.golang
-  version: bc107ec72972f0e7048787415ea061578b5c3f33
+  version: 735a2c3f9cde378f3ec819aa9f9c3f9f2fb4a007
   subpackages:
   - packets
 - name: github.com/davecgh/go-spew
