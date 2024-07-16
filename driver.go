@@ -35,6 +35,7 @@ type MQTTClient interface {
 	Start()
 	Stop()
 	Publish(message MQTTMessage)
+	PublishSync(message MQTTMessage)
 	Subscribe(callback MQTTMessageHandler, topics ...string)
 	Unsubscribe(topics ...string)
 }
@@ -201,6 +202,7 @@ type Driver struct {
 	active                 bool
 	ready                  bool
 	whenReady              *DeferredList
+	cleanupTopics          []string
 }
 
 func NewDriver(model Model, client MQTTClient) (drv *Driver) {
@@ -248,6 +250,22 @@ func (drv *Driver) Poll() {
 	drv.poll <- time.Now()
 }
 
+func (drv *Driver) addCleanupTopic(topic string) {
+	for _, v := range drv.cleanupTopics {
+		if v == topic {
+			return
+		}
+	}
+
+	drv.cleanupTopics = append(drv.cleanupTopics, topic)
+}
+
+func (drv *Driver) performCleanup() {
+	for _, topic := range drv.cleanupTopics {
+		drv.client.PublishSync(MQTTMessage{topic, "", 1, true})
+	}
+}
+
 func (drv *Driver) topic(dev DeviceModel, sub ...string) string {
 	parts := append(append([]string(nil), "/devices", dev.Name()), sub...)
 	return strings.Join(parts, "/")
@@ -264,6 +282,7 @@ func (drv *Driver) publish(topic, payload string, qos byte, retain bool) {
 
 func (drv *Driver) publishMeta(topic string, payload string) {
 	drv.publish(topic, payload, 1, true)
+	drv.addCleanupTopic(topic)
 }
 
 func (drv *Driver) publishValue(dev DeviceModel, controlName, value string) {
@@ -400,6 +419,8 @@ func (drv *Driver) OnNewControl(dev LocalDeviceModel, control Control) string {
 			drv.controlTopic(dev, control.Name, "on"))
 	}
 	drv.controlList[devName] = append(drv.controlList[devName], control.Name)
+
+	drv.addCleanupTopic(drv.controlTopic(dev, control.Name))
 	return value
 }
 
@@ -631,6 +652,7 @@ func (drv *Driver) Stop() {
 	}
 	drv.active = false
 	Debug.Printf("Driver.Stop()")
+	drv.performCleanup()
 	ch := make(chan struct{})
 	drv.quit <- ch
 	<-ch
