@@ -2,13 +2,14 @@ package wbgo
 
 import (
 	"fmt"
-	MQTT "github.com/contactless/org.eclipse.paho.mqtt.golang"
 	"log"
 	"log/syslog"
 	"math/rand"
 	"os"
 	"sync"
 	"time"
+
+	MQTT "github.com/contactless/org.eclipse.paho.mqtt.golang"
 )
 
 const (
@@ -166,6 +167,15 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 	}
 	client.tokens <- client.innerClient.Publish(
 		message.Topic, message.QoS, message.Retained, message.Payload)
+}
+
+func (client *PahoMQTTClient) PublishSync(message MQTTMessage) {
+	if DebuggingEnabled() {
+		Debug.Printf("PUB: %s -> %s", message.Topic, message.Payload)
+	}
+	token := client.innerClient.Publish(
+		message.Topic, message.QoS, message.Retained, message.Payload)
+	token.Wait()
 }
 
 func (client *PahoMQTTClient) subscribe(callback MQTTMessageHandler, topics ...string) MQTT.Token {

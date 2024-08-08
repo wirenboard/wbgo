@@ -2,11 +2,12 @@ package testutils
 
 import (
 	"fmt"
-	"github.com/contactless/wbgo"
 	"log"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/contactless/wbgo"
 )
 
 func topicPartsMatch(pattern []string, topic []string) bool {
@@ -183,6 +184,9 @@ func (client *FakeMQTTClient) ensureStarted() {
 func (client *FakeMQTTClient) Publish(message wbgo.MQTTMessage) {
 	client.ensureStarted()
 	client.broker.Publish(client.id, message)
+}
+
+func (client *FakeMQTTClient) PublishSync(message wbgo.MQTTMessage) {
 }
 
 func (client *FakeMQTTClient) Subscribe(callback wbgo.MQTTMessageHandler, topics ...string) {
