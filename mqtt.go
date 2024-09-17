@@ -18,18 +18,20 @@ const (
 )
 
 type MQTTSubscriptionMap map[string][]MQTTMessageHandler
+type mqttRetainedMessageMap map[string]MQTTMessage
 
 type PahoMQTTClient struct {
-	startMtx        sync.Mutex
-	connMtx         sync.Mutex
-	innerClient     *MQTT.Client
-	waitForRetained bool
-	ready           chan struct{}
-	stopped         chan struct{}
-	tokens          chan MQTT.Token
-	subs            MQTTSubscriptionMap
-	started         bool
-	connected       bool
+	startMtx         sync.Mutex
+	connMtx          sync.Mutex
+	innerClient      *MQTT.Client
+	waitForRetained  bool
+	ready            chan struct{}
+	stopped          chan struct{}
+	tokens           chan MQTT.Token
+	subs             MQTTSubscriptionMap
+	retainedMessages mqttRetainedMessageMap
+	started          bool
+	connected        bool
 }
 
 func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *PahoMQTTClient) {
@@ -39,13 +41,14 @@ func NewPahoMQTTClient(server, clientID string, waitForRetained bool) (client *P
 	}
 	clientID = fmt.Sprintf("%s-%s-%d", clientID, hostname, os.Getpid())
 	client = &PahoMQTTClient{
-		waitForRetained: waitForRetained,
-		ready:           make(chan struct{}),
-		stopped:         make(chan struct{}),
-		tokens:          make(chan MQTT.Token, TOKEN_QUEUE_LEN),
-		subs:            make(MQTTSubscriptionMap),
-		started:         false,
-		connected:       false,
+		waitForRetained:  waitForRetained,
+		ready:            make(chan struct{}),
+		stopped:          make(chan struct{}),
+		tokens:           make(chan MQTT.Token, TOKEN_QUEUE_LEN),
+		subs:             make(MQTTSubscriptionMap),
+		retainedMessages: make(mqttRetainedMessageMap),
+		started:          false,
+		connected:        false,
 	}
 	opts := MQTT.NewClientOptions().
 		AddBroker(server).
@@ -67,6 +70,12 @@ func (client *PahoMQTTClient) onConnect(innerClient *MQTT.Client) {
 			}
 			client.tokens <- client.subscribe(callback, topic)
 		}
+	}
+	for topic, msg := range client.retainedMessages {
+		if DebuggingEnabled() {
+			Debug.Printf("REPUB: %s", topic)
+		}
+		client.Publish(msg)
 	}
 	client.connMtx.Unlock()
 }
@@ -167,6 +176,14 @@ func (client *PahoMQTTClient) Publish(message MQTTMessage) {
 	}
 	client.tokens <- client.innerClient.Publish(
 		message.Topic, message.QoS, message.Retained, message.Payload)
+
+	if message.Retained {
+		if message.Payload == "" {
+			delete(client.retainedMessages, message.Topic)
+		} else {
+			client.retainedMessages[message.Topic] = message
+		}
+	}
 }
 
 func (client *PahoMQTTClient) PublishSync(message MQTTMessage) {
